@@ -855,6 +855,7 @@ function CustomersPage({ data, update, showToast }) {
     setModal(null);
   };
   const del = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa khách hàng này?")) return;
     update("customers", data.customers.filter(c => c.id !== id));
     showToast("Đã xóa khách hàng");
@@ -935,6 +936,7 @@ function VehiclesPage({ data, update, showToast }) {
     setModal(null);
   };
   const del = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa xe này?")) return;
     update("vehicles", data.vehicles.filter(v => v.id !== id));
     showToast("Đã xóa xe");
@@ -1345,6 +1347,7 @@ function QuotesPage({ data, update, showToast }) {
     setModal(false);
   };
   const del = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa báo giá này?")) return;
     update("quotes", (data.quotes || []).filter(q => q.id !== id));
     showToast("Đã xóa");
@@ -1685,6 +1688,7 @@ function PartsPage({ data, update, showToast }) {
     setModal(null);
   };
   const del = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa vật tư?")) return;
     update("parts", data.parts.filter(p => p.id !== id));
     showToast("Đã xóa");
@@ -1891,6 +1895,12 @@ function TechniciansPage({ data, update, showToast }) {
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
                 <Btn size="sm" onClick={() => { setReportModal(t); setReportDate(today()); }} outline color="#1565c0">📊 Báo cáo ngày</Btn>
+                <Btn size="sm" onClick={() => {
+                  if (!adminConfirm("xóa kỹ thuật viên")) return;
+                  if (!window.confirm("Xóa KTV " + t.name + "?")) return;
+                  update("technicians", data.technicians.filter(x => x.id !== t.id));
+                  showToast("Đã xóa kỹ thuật viên");
+                }} outline color="#c62828">🗑️ Xóa</Btn>
                 <Btn size="sm" onClick={() => openEdit(t)} outline>✏️ Sửa</Btn>
               </div>
             </Card>
@@ -2194,6 +2204,7 @@ function ExpensesPage({ data, update, showToast }) {
     setModal(null);
   };
   const delStaff = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa nhân viên này?")) return;
     update("staffs", (data.staffs || []).filter(s => s.id !== id));
     showToast("Đã xóa");
@@ -2211,6 +2222,7 @@ function ExpensesPage({ data, update, showToast }) {
     setModal(null);
   };
   const delExp = (id) => {
+    if (!adminConfirm("xóa")) return;
     if (!window.confirm("Xóa khoản chi này?")) return;
     update("operatingExpenses", (data.operatingExpenses || []).filter(e => e.id !== id));
     showToast("Đã xóa");
