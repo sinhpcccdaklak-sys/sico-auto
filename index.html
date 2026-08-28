@@ -595,8 +595,45 @@ function SicoAuto() {
             </div>
           ))}
         </nav>
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.15)", fontSize: 11, color: "#90caf9" }}>
-          © 2026 SICO AUTO v1.0
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <button onClick={() => {
+              const json = JSON.stringify(data, null, 2);
+              const blob = new Blob([json], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "sico-backup-" + new Date().toISOString().slice(0,10) + ".json";
+              a.click();
+              URL.revokeObjectURL(url);
+            }} style={{ flex:1, padding:"8px 4px", background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:6, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+              📤 Xuất data
+            </button>
+            <label style={{ flex:1, padding:"8px 4px", background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:6, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer", textAlign:"center", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              📥 Nhập data
+              <input type="file" accept=".json" style={{ display:"none" }} onChange={e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => {
+                  try {
+                    const imported = JSON.parse(ev.target.result);
+                    const keys = Object.keys(imported);
+                    if (!keys.length) { alert("❌ File trống!"); return; }
+                    if (window.confirm("Nhập data sẽ GHI ĐÈ toàn bộ dữ liệu hiện tại.\nBạn chắc chắn muốn tiếp tục?")) {
+                      keys.forEach(key => update(key, imported[key]));
+                      alert("✅ Nhập data thành công! " + keys.length + " danh mục.");
+                    }
+                  } catch(err) {
+                    alert("❌ File không hợp lệ! Vui lòng chọn file backup đúng định dạng.");
+                  }
+                };
+                reader.readAsText(file);
+                e.target.value = "";
+              }} />
+            </label>
+          </div>
+          <div style={{ fontSize: 11, color: "#90caf9", textAlign: "center" }}>© 2026 SICO AUTO v1.0</div>
         </div>
       </div>
       {/* MAIN */}
