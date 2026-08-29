@@ -1,0 +1,2342 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SICO AUTO - Quản lý Garage</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: #c5cae9; border-radius: 3px; }
+select, input, textarea, button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useMemo } = React;
+
+// ===================== INITIAL DATA =====================
+const EMPTY_CUSTOMER = { id: null, name: "", phone: "", address: "", email: "" };
+const EMPTY_VEHICLE = {
+  id: null, customerId: null, licensePlate: "", frameNumber: "", engineNumber: "",
+  vehicleName: "", brand: "", type: "", color: "", year: "", currentKm: "",
+  lastMaintenanceDate: "", nextMaintenanceKm: "", registrationExpiry: "", insuranceExpiry: "",
+  notes: ""
+};
+const EMPTY_REPAIR_ORDER = {
+  id: null, vehicleId: null, customerId: null, receiveDate: "", receiveKm: "",
+  symptoms: "", diagnosis: "", status: "Tiếp nhận", technicianId: null,
+  estimatedDone: "", actualDone: "", totalLabor: 0, totalParts: 0, totalAmount: 0,
+  discount: 0, paid: 0, notes: ""
+};
+const EMPTY_PART = {
+  id: null, code: "", name: "", unit: "", category: "", costPrice: 0,
+  salePrice: 0, stock: 0, minStock: 5, location: ""
+};
+const EMPTY_TECHNICIAN = { id: null, name: "", phone: "", speciality: "", status: "active" };
+
+const VEHICLE_BRANDS = ["Toyota","Honda","Hyundai","Kia","Mazda","Ford","Mitsubishi","Nissan","Suzuki","Chevrolet","VinFast","Isuzu","Hino","Mercedes","BMW","Audi","Khác"];
+const VEHICLE_TYPES = ["Sedan","SUV","Pickup","Van","MPV","Coupe","Hatchback","Minibus","Tải nhẹ","Tải trung","Tải nặng","Xe buýt","Khác"];
+
+// ===================== HELPERS =====================
+const generateId = () => Date.now() + Math.random().toString(36).slice(2);
+const today = () => new Date().toISOString().split("T")[0];
+const formatDate = (d) => d ? new Date(d).toLocaleDateString("vi-VN") : "-";
+const formatCurrency = (n) => (Number(n)||0).toLocaleString("vi-VN") + " đ";
+const daysUntil = (dateStr) => {
+  if (!dateStr) return null;
+  const diff = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+  return diff;
+};
+const alertLevel = (days) => {
+  if (days === null) return "";
+  if (days < 0) return "expired";
+  if (days <= 15) return "danger";
+  if (days <= 30) return "warning";
+  return "ok";
+};
+
+
+const ADMIN_PASS = "Cocdragon@12345";
+const adminConfirm = (action) => {
+  const pw = window.prompt("Nhập mật khẩu Admin để " + action + ":");
+  if (pw === null) return false;
+  if (pw !== ADMIN_PASS) { alert("Sai mật khẩu!"); return false; }
+  return true;
+};
+const LOGO_IMG = "data:image/png;base64,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";
+
+// ===================== ICONS =====================
+const Icon = ({ name, size = 16 }) => {
+  const icons = {
+    car: "🚗", customer: "👤", wrench: "🔧", parts: "📦", invoice: "🧾",
+    report: "📊", dashboard: "🏠", plus: "➕", edit: "✏️", delete: "🗑️",
+    search: "🔍", bell: "🔔", save: "💾", back: "◀", print: "🖨️",
+    check: "✅", x: "❌", warning: "⚠️", truck: "🚛", money: "💰",
+    calendar: "📅", technician: "👨‍🔧", exit: "🚪", warehouse: "🏭", chart: "📈"
+  };
+  return <span style={{ fontSize: size }}>{icons[name] || "●"}</span>;
+};
+
+// ===================== STORAGE =====================
+const useStorage = () => {
+  const [data, setData] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("sico_auto");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      customers: [
+        { id: "c1", name: "Nguyễn Văn An", phone: "0901234567", address: "123 Lê Lợi, Buôn Ma Thuột", email: "nguyenan@email.com" },
+        { id: "c2", name: "Trần Thị Bích", phone: "0912345678", address: "45 Nguyễn Tất Thành, BMT", email: "" }
+      ],
+      vehicles: [
+        { id: "v1", customerId: "c1", licensePlate: "47A-12345", frameNumber: "JTDBF22K200123456", engineNumber: "2AZ1234567", vehicleName: "Camry 2.5Q", brand: "Toyota", type: "Sedan", color: "Trắng", year: "2020", currentKm: "45000", lastMaintenanceDate: "2025-12-15", nextMaintenanceKm: "50000", registrationExpiry: "2026-08-10", insuranceExpiry: "2026-07-20", notes: "" },
+        { id: "v2", customerId: "c2", licensePlate: "47B-67890", frameNumber: "MALAM51BXPM123456", engineNumber: "G4FG123456", vehicleName: "Morning 1.4AT", brand: "Kia", type: "Hatchback", color: "Đỏ", year: "2019", currentKm: "62000", lastMaintenanceDate: "2026-01-10", nextMaintenanceKm: "65000", registrationExpiry: "2026-10-05", insuranceExpiry: "2025-12-31", notes: "" }
+      ],
+      repairOrders: [
+        { id: "ro1", vehicleId: "v1", customerId: "c1", receiveDate: today(), receiveKm: "45200", symptoms: "Thay dầu máy, lọc gió", diagnosis: "Bảo dưỡng định kỳ", status: "Hoàn thành", technicianId: "t1", estimatedDone: today(), actualDone: today(), totalLabor: 200000, totalParts: 850000, totalAmount: 1050000, discount: 0, paid: 1050000, notes: "" }
+      ],
+      parts: [
+        { id: "p1", code: "DM5W30", name: "Dầu máy 5W-30 4L", unit: "Can", category: "Dầu nhớt", costPrice: 220000, salePrice: 280000, stock: 24, minStock: 10, location: "K1-A1" },
+        { id: "p2", code: "LG001", name: "Lọc gió động cơ Toyota", unit: "Cái", category: "Lọc", costPrice: 85000, salePrice: 120000, stock: 15, minStock: 5, location: "K1-B2" },
+        { id: "p3", code: "LDM001", name: "Lọc dầu máy", unit: "Cái", category: "Lọc", costPrice: 35000, salePrice: 55000, stock: 30, minStock: 10, location: "K1-B1" },
+        { id: "p4", code: "MC001", name: "Má phanh trước", unit: "Bộ", category: "Phanh", costPrice: 280000, salePrice: 380000, stock: 8, minStock: 4, location: "K2-A1" }
+      ],
+      technicians: [
+        { id: "t1", name: "Lê Văn Cường", phone: "0933111222", speciality: "Động cơ, Gầm", status: "active" },
+        { id: "t2", name: "Phạm Minh Đức", phone: "0944222333", speciality: "Điện, Điều hòa", status: "active" }
+      ],
+      stockMovements: [],
+      quotes: [],
+      techReports: [],
+      staffs: [
+        { id: "s1", name: "Lê Văn Cường", phone: "0933111222", idCard: "026091234567", position: "Kỹ thuật viên", department: "Kỹ thuật", startDate: "2022-03-01", basicSalary: 6000000, allowance: 500000, status: "active", bhxhRate: 8, bhytRate: 1.5, bhtnRate: 1 },
+        { id: "s2", name: "Phạm Minh Đức", phone: "0944222333", idCard: "026098765432", position: "Kỹ thuật viên", department: "Kỹ thuật", startDate: "2023-01-15", basicSalary: 5500000, allowance: 500000, status: "active", bhxhRate: 8, bhytRate: 1.5, bhtnRate: 1 },
+        { id: "s3", name: "Nguyễn Thị Lan", phone: "0955333444", idCard: "026087654321", position: "Kế toán", department: "Văn phòng", startDate: "2021-06-01", basicSalary: 7000000, allowance: 800000, status: "active", bhxhRate: 8, bhytRate: 1.5, bhtnRate: 1 },
+      ],
+      salaryRecords: [],
+      settings: { garageName:"CTY TNHH TMDV SICO AUTO", garagePhone:"0905862851", garageAddress:"Số 117 Đường Vành Đai 10/3, Phường Buôn Ma Thuột", garageBankAccount:"10003347079 - Ngân hàng TMCP Tiên Phong (TP Bank)", garageReceiver:"NGUYỄN VĂN SINH", appTitle:"SICO AUTO", appSubtitle:"Hệ thống quản lý Garage", warranty:"- Bảo hành động cơ 01 năm.\n- Phụ tùng gầm bảo hành 06 tháng.\n- Đặt cọc 40% khi đặt hàng.\n- Xin cảm ơn quý khách.", defaultLaborRate:150000, defaultVatType:"no_vat", alertDaysReg:30, alertDaysIns:30, alertKm:1000, minStock:5 },
+      operatingExpenses: [
+        { id: "oe1", date: today(), category: "Mặt bằng", description: "Tiền thuê mặt bằng tháng 6/2026", amount: 8000000, paymentMethod: "Tiền mặt", notes: "" },
+        { id: "oe2", date: today(), category: "Điện nước", description: "Tiền điện tháng 5/2026", amount: 1200000, paymentMethod: "Chuyển khoản", notes: "" },
+      ]
+    };
+  });
+
+  const save = useCallback((newData) => {
+    setData(newData);
+    try { sessionStorage.setItem("sico_auto", JSON.stringify(newData)); } catch {}
+  }, []);
+
+  return [data, save];
+};
+
+// ===================== MAIN APP =====================
+
+// ===================== PRINT =====================
+const doPrint = (content, title) => {
+  const old = document.getElementById("__sico_print__");
+  if (old) old.remove();
+  const oldStyle = document.getElementById("__sico_ps__");
+  if (oldStyle) oldStyle.remove();
+
+  const d = document.createElement("div");
+  d.id = "__sico_print__";
+  d.innerHTML = content;
+  document.body.appendChild(d);
+
+  const s = document.createElement("style");
+  s.id = "__sico_ps__";
+  s.textContent = "@media screen{#__sico_print__{display:none}}@media print{body *{display:none!important}#__sico_print__{display:block!important;position:fixed;top:0;left:0;width:100%;z-index:99999}}";
+  document.head.appendChild(s);
+
+  setTimeout(function(){
+    window.print();
+    setTimeout(function(){
+      const el=document.getElementById("__sico_print__"); if(el)el.remove();
+      const sl=document.getElementById("__sico_ps__"); if(sl)sl.remove();
+    }, 2000);
+  }, 400);
+};
+
+const fC = (n) => (Number(n)||0).toLocaleString("vi-VN") + " đ";
+const fD = (d) => d ? new Date(d + "T00:00:00").toLocaleDateString("vi-VN") : "-";
+
+const pCSS = "body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#000}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:12px}th{background:#1a237e!important;color:#fff;padding:6px 8px;font-weight:700;text-align:left}td{padding:5px 8px;border:1px solid #bbb}.lbl{background:#f0f2fa!important;font-weight:600;color:#444;width:130px}.sec{font-size:12px;font-weight:700;color:#1a237e;padding:4px 10px;background:#e8eaf6;border-left:4px solid #1a237e;margin:10px 0 6px;border-radius:3px}tfoot td{background:#e8eaf6!important;font-weight:700;border-top:2px solid #1a237e}.sign{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:20px;text-align:center;font-size:11px;font-weight:700}.sline{height:45px;border-bottom:1px dashed #999;margin-bottom:4px}.footer{margin-top:12px;font-size:10px;color:#aaa;text-align:center;border-top:1px solid #eee;padding-top:6px}@media print{-webkit-print-color-adjust:exact;print-color-adjust:exact}";
+
+const pHeader = (s) => {
+  const g = s || {};
+  return "<div style='display:flex;align-items:center;gap:12px;margin-bottom:10px;padding-bottom:10px;border-bottom:2px solid #1a237e'>"
+    + "<div style='font-size:32px'>🔧</div>"
+    + "<div><div style='font-size:16px;font-weight:900;color:#1a237e'>" + (g.garageName||"SICO AUTO") + "</div>"
+    + "<div style='font-size:10px;color:#555'>Địa chỉ: " + (g.garageAddress||"") + "</div>"
+    + "<div style='font-size:10px;color:#555'>ĐT: " + (g.garagePhone||"") + "</div></div></div>";
+};
+
+// ---- In phiếu tiếp nhận xe ----
+const printVehicleReceipt = (v, data) => {
+  const c = data.customers.find(c => c.id === v.customerId);
+  const s = data.settings || {};
+  const photos = v.photos || [];
+  const photoHtml = photos.length === 0 ? "<p style='color:#aaa'>Chưa có ảnh xe</p>"
+    : "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px'>"
+      + photos.map(function(p){ return "<div style='border:1px solid #ddd;border-radius:6px;overflow:hidden'><img src='" + p.data + "' style='width:100%;height:110px;object-fit:cover;display:block'>" + (p.note?"<div style='padding:3px 6px;font-size:10px'>"+p.note+"</div>":"") + "</div>"; }).join("") + "</div>";
+
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:20px;font-weight:900;color:#1a237e;letter-spacing:2px;margin:8px 0 12px'>PHIẾU TIẾP NHẬN XE</h2>"
+    + "<div class='sec'>👤 Khách hàng</div>"
+    + "<table><tr><td class='lbl'>Họ tên:</td><td><strong>" + (c?.name||"-") + "</strong></td><td class='lbl'>SĐT:</td><td>" + (c?.phone||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Địa chỉ:</td><td colspan='3'>" + (c?.address||"-") + "</td></tr></table>"
+    + "<div class='sec'>🚗 Thông tin xe</div>"
+    + "<table>"
+    + "<tr><td class='lbl'>Biển số:</td><td style='font-size:16px;font-weight:900;color:#1a237e'>" + (v.licensePlate||"-") + "</td><td class='lbl'>Màu sắc:</td><td>" + (v.color||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Tên xe:</td><td>" + (v.vehicleName||"-") + "</td><td class='lbl'>Nhãn hiệu:</td><td>" + (v.brand||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Số khung:</td><td style='font-family:monospace'>" + (v.frameNumber||"-") + "</td><td class='lbl'>Số máy:</td><td style='font-family:monospace'>" + (v.engineNumber||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Km hiện tại:</td><td>" + Number(v.currentKm||0).toLocaleString() + " km</td><td class='lbl'>Hạn đăng kiểm:</td><td>" + (v.registrationExpiry||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Hạn bảo hiểm:</td><td>" + (v.insuranceExpiry||"-") + "</td><td class='lbl'>Năm SX:</td><td>" + (v.year||"-") + "</td></tr>"
+    + "</table>"
+    + "<div class='sec'>📋 Tình trạng xe</div>"
+    + "<div style='border:1px solid #bbb;padding:8px;border-radius:4px;min-height:40px'>" + (v.notes||"Chưa ghi chú") + "</div>"
+    + "<div class='sec'>📷 Hình ảnh xe (" + photos.length + " ảnh)</div>"
+    + photoHtml
+    + "<div class='sign' style='margin-top:24px'><div><div class='sline'></div>Khách hàng<br><small>" + (c?.name||"") + "</small></div><div><div class='sline'></div>Người tiếp nhận<br><small>" + (s.garageReceiver||"") + "</small></div><div><div class='sline'></div>Quản lý xác nhận</div></div>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div>"
+    + "</div>";
+  doPrint(html, "Phiếu tiếp nhận xe");
+};
+
+// ---- In lệnh sửa chữa ----
+const printRepairOrder = (r, parts, data) => {
+  const v = data.vehicles.find(v => v.id === r.vehicleId);
+  const c = data.customers.find(c => c.id === r.customerId);
+  const t = data.technicians.find(t => t.id === r.technicianId);
+  const s = data.settings || {};
+  const photos = (v && v.photos) ? v.photos : [];
+  const pts = parts || r.parts || [];
+  const totalParts = pts.reduce(function(sum,p){ return sum+(p.qty*p.price); }, 0);
+  const totalAmt = (Number(r.totalLabor)||0) + totalParts - (Number(r.discount)||0);
+  const photoHtml = photos.length === 0 ? "<p style='color:#aaa'>Chưa có ảnh xe</p>"
+    : "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px'>"
+      + photos.map(function(p){ return "<div style='border:1px solid #ddd;border-radius:6px;overflow:hidden'><img src='" + p.data + "' style='width:100%;height:110px;object-fit:cover;display:block'>" + (p.note?"<div style='padding:3px 6px;font-size:10px'>"+p.note+"</div>":"") + "</div>"; }).join("") + "</div>";
+  const partRows = pts.length === 0 ? "<tr><td colspan='5' style='text-align:center;color:#aaa'>Không có vật tư</td></tr>"
+    : pts.map(function(p,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td>"+p.name+"</td><td style='text-align:center'>"+p.qty+"</td><td style='text-align:center'>"+(p.unit||"")+"</td><td style='text-align:right'>"+fC(p.qty*p.price)+"</td></tr>"; }).join("");
+
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:20px;font-weight:900;color:#1a237e;letter-spacing:2px;margin:8px 0 4px'>LỆNH SỬA CHỮA</h2>"
+    + "<div style='text-align:center;font-size:12px;color:#666;margin-bottom:10px'>Mã: <strong>#" + r.id.slice(-4).toUpperCase() + "</strong> | Ngày: " + fD(r.receiveDate) + " | " + r.status + "</div>"
+    + "<div class='sec'>👤 Khách hàng & Xe</div>"
+    + "<table><tr><td class='lbl'>Biển số:</td><td style='font-size:15px;font-weight:900;color:#1a237e'>" + (v?.licensePlate||"-") + "</td><td class='lbl'>Khách hàng:</td><td><strong>" + (c?.name||"-") + "</strong></td></tr>"
+    + "<tr><td class='lbl'>Tên xe:</td><td>" + (v?.vehicleName||"-") + "</td><td class='lbl'>SĐT:</td><td>" + (c?.phone||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>Số khung:</td><td style='font-family:monospace'>" + (v?.frameNumber||"-") + "</td><td class='lbl'>Số máy:</td><td style='font-family:monospace'>" + (v?.engineNumber||"-") + "</td></tr>"
+    + "<tr><td class='lbl'>KTV phụ trách:</td><td>" + (t?.name||"-") + "</td><td class='lbl'>Km tiếp nhận:</td><td>" + Number(r.receiveKm||0).toLocaleString() + " km</td></tr></table>"
+    + "<div class='sec'>🔍 Triệu chứng & Chẩn đoán</div>"
+    + "<table><tr><th>Triệu chứng</th><th>Chẩn đoán</th></tr><tr><td style='vertical-align:top'>" + (r.symptoms||"-") + "</td><td style='vertical-align:top'>" + (r.diagnosis||"-") + "</td></tr></table>"
+    + "<div class='sec'>🔧 Vật tư</div>"
+    + "<table><thead><tr><th style='width:30px'>#</th><th>Tên</th><th style='width:50px;text-align:center'>SL</th><th style='width:40px;text-align:center'>ĐV</th><th style='width:110px;text-align:right'>Thành tiền</th></tr></thead><tbody>" + partRows + "</tbody>"
+    + "<tfoot><tr><td colspan='4' style='text-align:right'>Tiền vật tư:</td><td style='text-align:right'>" + fC(totalParts) + "</td></tr>"
+    + "<tr><td colspan='4' style='text-align:right'>Tiền công:</td><td style='text-align:right'>" + fC(r.totalLabor) + "</td></tr>"
+    + "<tr><td colspan='4' style='text-align:right;font-size:14px'><strong>TỔNG:</strong></td><td style='text-align:right;font-size:16px;color:#2e7d32;font-weight:900'>" + fC(totalAmt) + "</td></tr></tfoot></table>"
+    + "<div class='sec'>📷 Hình ảnh xe (" + photos.length + " ảnh)</div>" + photoHtml
+    + "<div class='sign'><div><div class='sline'></div>Khách hàng</div><div><div class='sline'></div>Kỹ thuật viên</div><div><div class='sline'></div>Quản lý</div></div>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div>"
+    + "</div>";
+  doPrint(html, "Lệnh sửa chữa");
+};
+
+// ---- In danh sách khách hàng ----
+const printCustomers = (customers, settings) => {
+  const s = settings || {};
+  const rows = customers.map(function(c,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td><strong>"+c.name+"</strong></td><td>"+c.phone+"</td><td>"+c.address+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>DANH SÁCH KHÁCH HÀNG</h2>"
+    + "<table><thead><tr><th style='width:30px'>#</th><th>Họ tên</th><th style='width:120px'>SĐT</th><th>Địa chỉ</th></tr></thead><tbody>" + rows + "</tbody></table>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In tồn kho ----
+const printInventory = (parts, settings) => {
+  const s = settings || {};
+  const total = parts.reduce(function(s,p){ return s+(p.costPrice*p.stock); },0);
+  const rows = parts.map(function(p,i){ const low=p.stock<=p.minStock; return "<tr style='background:"+(low?"#fff3e0":"")+"'><td style='text-align:center'>"+(i+1)+"</td><td>"+p.name+"</td><td style='text-align:center'>"+p.unit+"</td><td style='text-align:right'>"+fC(p.costPrice)+"</td><td style='text-align:right'>"+fC(p.salePrice)+"</td><td style='text-align:center;color:"+(low?"#c62828":"#2e7d32")+";font-weight:700'>"+p.stock+(low?" ⚠":"")+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>BÁO CÁO TỒN KHO</h2>"
+    + "<table><thead><tr><th>#</th><th>Tên vật tư</th><th style='text-align:center'>ĐV</th><th style='text-align:right'>Giá nhập</th><th style='text-align:right'>Giá bán</th><th style='text-align:center'>Tồn kho</th></tr></thead><tbody>" + rows + "</tbody>"
+    + "<tfoot><tr><td colspan='5' style='text-align:right'>Tổng giá trị tồn kho:</td><td style='text-align:right;color:#2e7d32;font-weight:900'>"+fC(total)+"</td></tr></tfoot></table>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In báo cáo KTV ----
+const printTechReport = (t, orders, date, settings) => {
+  const s = settings || {};
+  const done = orders.filter(function(r){ return r.status==="Hoàn thành"||r.status==="Đã xuất xưởng"; });
+  const rev = done.reduce(function(sum,r){ return sum+(Number(r.totalAmount)||0); },0);
+  const rows = orders.map(function(r,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td>"+(r.vehicleId||"-")+"</td><td>"+r.symptoms+"</td><td>"+r.status+"</td><td style='text-align:right'>"+fC(r.totalAmount)+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 4px'>BÁO CÁO NGÀY KTV</h2>"
+    + "<div style='text-align:center;font-size:12px;color:#666;margin-bottom:10px'>KTV: <strong>" + t.name + "</strong> | Ngày: " + date + "</div>"
+    + "<table><tr><td class='lbl'>Tổng lệnh:</td><td>"+orders.length+"</td><td class='lbl'>Hoàn thành:</td><td style='color:#2e7d32;font-weight:700'>"+done.length+"</td></tr>"
+    + "<tr><td class='lbl'>Doanh thu:</td><td colspan='3' style='font-size:16px;font-weight:900;color:#2e7d32'>"+fC(rev)+"</td></tr></table>"
+    + "<table><thead><tr><th>#</th><th>Biển số</th><th>Triệu chứng</th><th>Trạng thái</th><th style='text-align:right'>Tổng tiền</th></tr></thead><tbody>" + rows + "</tbody></table>"
+    + "<div class='sign'><div><div class='sline'></div>Kỹ thuật viên</div><div><div class='sline'></div>Quản lý</div><div><div class='sline'></div>Kế toán</div></div>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In bảng lương ----
+const printSalaryTable = (records, settings) => {
+  const s = settings || {};
+  const month = records.length > 0 ? records[0].month : "";
+  const rows = records.map(function(r,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td><strong>"+r.staffName+"</strong></td><td>"+r.position+"</td><td style='text-align:right'>"+fC(r.basicSalary)+"</td><td style='text-align:right;color:#2e7d32;font-weight:700'>"+fC(r.netSalary)+"</td><td style='text-align:right;color:#c62828'>"+fC(r.totalCostToCompany)+"</td></tr>"; }).join("");
+  const totalNet = records.reduce(function(s,r){ return s+(r.netSalary||0); },0);
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>BẢNG LƯƠNG THÁNG " + month + "</h2>"
+    + "<table><thead><tr><th>#</th><th>Nhân viên</th><th>Chức vụ</th><th style='text-align:right'>Lương CB</th><th style='text-align:right'>Lương NET</th><th style='text-align:right'>Tổng chi CT</th></tr></thead><tbody>" + rows + "</tbody>"
+    + "<tfoot><tr><td colspan='4' style='text-align:right'>Tổng lương NET:</td><td style='text-align:right;color:#2e7d32;font-weight:900'>"+fC(totalNet)+"</td><td></td></tr></tfoot></table>"
+    + "<div class='sign'><div><div class='sline'></div>Người lập bảng</div><div><div class='sline'></div>Kế toán trưởng</div><div><div class='sline'></div>Giám đốc</div></div>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In báo cáo tổng hợp ----
+const printReports = (data, byStatus, byTech, waiting, revenue) => {
+  const s = data.settings || {};
+  const statusRows = Object.entries(byStatus).map(function(e){ return "<tr><td>"+e[0]+"</td><td style='text-align:center'>"+e[1]+"</td></tr>"; }).join("");
+  const techRows = byTech.map(function(t,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td>"+t.name+"</td><td style='text-align:center'>"+t.total+"</td><td style='text-align:center;color:#2e7d32'>"+t.done+"</td><td style='text-align:right'>"+fC(t.revenue)+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>BÁO CÁO TỔNG HỢP GARAGE</h2>"
+    + "<div style='display:grid;grid-template-columns:1fr 1fr;gap:14px'>"
+    + "<div><div class='sec'>Lệnh SC theo trạng thái</div><table><thead><tr><th>Trạng thái</th><th style='width:60px;text-align:center'>Số lệnh</th></tr></thead><tbody>" + statusRows + "</tbody></table></div>"
+    + "<div><div class='sec'>Tổng doanh thu</div><div style='font-size:28px;font-weight:900;color:#2e7d32;text-align:center;padding:20px'>"+fC(revenue)+"</div></div></div>"
+    + "<div class='sec'>Hiệu suất KTV</div>"
+    + "<table><thead><tr><th>#</th><th>KTV</th><th style='text-align:center'>Tổng lệnh</th><th style='text-align:center'>Hoàn thành</th><th style='text-align:right'>Doanh thu</th></tr></thead><tbody>" + techRows + "</tbody></table>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In kế toán ----
+const printAccounting = (data, period, revenue, partsCost, quoteRevenue, netProfit) => {
+  const s = data.settings || {};
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>BÁO CÁO KẾ TOÁN - " + period.toUpperCase() + "</h2>"
+    + "<table><tbody>"
+    + "<tr><td class='lbl'>Doanh thu SC:</td><td style='text-align:right;color:#2e7d32;font-weight:700'>"+fC(revenue)+"</td></tr>"
+    + "<tr><td class='lbl'>Doanh thu báo giá:</td><td style='text-align:right;color:#2e7d32;font-weight:700'>"+fC(quoteRevenue)+"</td></tr>"
+    + "<tr><td class='lbl'>Giá vốn VT:</td><td style='text-align:right;color:#c62828'>- "+fC(partsCost)+"</td></tr>"
+    + "<tr style='background:#e8f5e9'><td class='lbl'><strong>LỢI NHUẬN RÒNG:</strong></td><td style='text-align:right;font-size:18px;font-weight:900;color:"+(netProfit>=0?"#2e7d32":"#c62828")+"'>"+fC(netProfit)+"</td></tr>"
+    + "</tbody></table>"
+    + "<div class='sign'><div><div class='sline'></div>Kế toán</div><div><div class='sline'></div>Giám đốc</div><div><div class='sline'></div>Kiểm soát</div></div>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In chi phí ----
+const printExpenses = (expenses, settings) => {
+  const s = settings || {};
+  const total = expenses.reduce(function(sum,e){ return sum+(Number(e.amount)||0); },0);
+  const rows = expenses.map(function(e,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td>"+fD(e.date)+"</td><td>"+e.category+"</td><td>"+e.description+"</td><td style='text-align:right;font-weight:700'>"+fC(e.amount)+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>BÁO CÁO CHI PHÍ VẬN HÀNH</h2>"
+    + "<table><thead><tr><th>#</th><th>Ngày</th><th>Danh mục</th><th>Mô tả</th><th style='text-align:right'>Số tiền</th></tr></thead><tbody>" + rows + "</tbody>"
+    + "<tfoot><tr><td colspan='4' style='text-align:right'>TỔNG CHI PHÍ:</td><td style='text-align:right;color:#c62828;font-size:14px;font-weight:900'>"+fC(total)+"</td></tr></tfoot></table>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+// ---- In lịch sử kho ----
+const printStockMovements = (movements, settings) => {
+  const s = settings || {};
+  const rows = movements.map(function(m,i){ return "<tr><td style='text-align:center'>"+(i+1)+"</td><td>"+fD(m.date)+"</td><td>"+m.partName+"</td><td style='text-align:center;color:"+(m.type==="Nhập"?"#2e7d32":"#c62828")+";font-weight:700'>"+m.type+"</td><td style='text-align:center'>"+m.qty+"</td><td>"+m.ref+"</td></tr>"; }).join("");
+  const html = "<style>" + pCSS + "</style><div style='padding:12mm'>"
+    + pHeader(s)
+    + "<h2 style='text-align:center;font-size:18px;font-weight:900;color:#1a237e;margin:8px 0 12px'>LỊCH SỬ XUẤT NHẬP KHO</h2>"
+    + "<table><thead><tr><th>#</th><th>Ngày</th><th>Vật tư</th><th style='text-align:center'>Loại</th><th style='text-align:center'>SL</th><th>Chứng từ</th></tr></thead><tbody>" + rows + "</tbody></table>"
+    + "<div class='footer'>" + (s.garageName||"SICO AUTO") + " | In: " + new Date().toLocaleString("vi-VN") + "</div></div>";
+  doPrint(html);
+};
+
+
+function SettingsPage({ data, update, showToast }) {
+  const s = data.settings || {};
+  const [tab, setTab] = React.useState("garage");
+  const [form, setForm] = React.useState({
+    garageName: s.garageName||"CTY TNHH TMDV SICO AUTO", garageAddress: s.garageAddress||"", garagePhone: s.garagePhone||"", garageEmail: s.garageEmail||"", garageBankAccount: s.garageBankAccount||"", garageReceiver: s.garageReceiver||"",
+    appTitle: s.appTitle||"SICO AUTO", appSubtitle: s.appSubtitle||"Hệ thống quản lý Garage",
+    defaultLaborRate: s.defaultLaborRate||150000, defaultVatType: s.defaultVatType||"no_vat",
+    alertDaysReg: s.alertDaysReg||30, alertDaysIns: s.alertDaysIns||30, alertKm: s.alertKm||1000, minStock: s.minStock||5,
+    warranty: s.warranty||"", repairFooterNote: s.repairFooterNote||"",
+  });
+  const save = () => { update("settings", form); showToast("✅ Đã lưu cài đặt!"); };
+  const inp = (k, ph) => <input value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={ph||""} style={{width:"100%",padding:"8px 10px",border:"1px solid #ddd",borderRadius:6,fontSize:13,boxSizing:"border-box"}} />;
+  const num = (k) => <input type="number" value={form[k]||0} onChange={e=>setForm({...form,[k]:Number(e.target.value)})} style={{width:"100%",padding:"8px 10px",border:"1px solid #ddd",borderRadius:6,fontSize:13}} />;
+  const lbl = (t,s) => <div style={{marginBottom:4}}><label style={{fontSize:12,fontWeight:600,color:"#555"}}>{t}</label>{s&&<div style={{fontSize:11,color:"#aaa"}}>{s}</div>}</div>;
+  const sec = (t) => <div style={{fontWeight:700,color:"#1a237e",padding:"5px 10px",background:"#e8eaf6",borderLeft:"4px solid #1a237e",borderRadius:4,marginBottom:14}}>{t}</div>;
+  const TABS = [{id:"garage",label:"🏢 Thông tin Garage"},{id:"quotes",label:"🧾 Báo giá"},{id:"repair",label:"🔧 Lệnh SC"},{id:"alerts",label:"🔔 Cảnh báo"},{id:"display",label:"🎨 Hiển thị"},{id:"warranty",label:"📋 Điều khoản BH"}];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <Card><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 14px",border:"2px solid "+(tab===t.id?"#1a237e":"#ddd"),borderRadius:20,background:tab===t.id?"#1a237e":"#fff",color:tab===t.id?"#fff":"#666",fontWeight:600,cursor:"pointer",fontSize:13}}>{t.label}</button>)}</div></Card>
+      {tab==="garage"&&<Card>{sec("🏢 Thông tin Garage")}<Grid cols={2} gap={12}><div>{lbl("Tên garage")}{inp("garageName")}</div><div>{lbl("Điện thoại")}{inp("garagePhone")}</div><div style={{gridColumn:"1/-1"}}>{lbl("Địa chỉ")}{inp("garageAddress")}</div><div>{lbl("Email")}{inp("garageEmail")}</div><div>{lbl("Người tiếp nhận")}{inp("garageReceiver")}</div><div style={{gridColumn:"1/-1"}}>{lbl("Số tài khoản ngân hàng")}{inp("garageBankAccount")}</div></Grid></Card>}
+      {tab==="quotes"&&<Card>{sec("🧾 Cài đặt Báo giá")}<Grid cols={2} gap={12}><div>{lbl("Đơn giá giờ công (đ/h)")}{num("defaultLaborRate")}</div><div>{lbl("VAT mặc định")}<select value={form.defaultVatType} onChange={e=>setForm({...form,defaultVatType:e.target.value})} style={{width:"100%",padding:"8px 10px",border:"1px solid #ddd",borderRadius:6,fontSize:13}}><option value="no_vat">Chưa bao gồm VAT</option><option value="vat8">+ VAT 8%</option><option value="vat10">+ VAT 10%</option><option value="included">Đã bao gồm VAT</option></select></div></Grid></Card>}
+      {tab==="repair"&&<Card>{sec("🔧 Lệnh sửa chữa")}{lbl("Ghi chú cuối phiếu SC")}<textarea value={form.repairFooterNote||""} onChange={e=>setForm({...form,repairFooterNote:e.target.value})} rows={4} style={{width:"100%",padding:"8px 10px",border:"1px solid #ddd",borderRadius:6,fontSize:13,resize:"vertical",boxSizing:"border-box"}} /></Card>}
+      {tab==="alerts"&&<Card>{sec("🔔 Cài đặt Cảnh báo")}<Grid cols={2} gap={12}><div>{lbl("Cảnh báo đăng kiểm (ngày)")}{num("alertDaysReg")}</div><div>{lbl("Cảnh báo bảo hiểm (ngày)")}{num("alertDaysIns")}</div><div>{lbl("Cảnh báo bảo dưỡng (km)")}{num("alertKm")}</div><div>{lbl("Tồn kho tối thiểu")}{num("minStock")}</div></Grid></Card>}
+      {tab==="display"&&<Card>{sec("🎨 Hiển thị")}<Grid cols={2} gap={12}><div>{lbl("Tên sidebar")}{inp("appTitle")}</div><div>{lbl("Mô tả phụ")}{inp("appSubtitle")}</div></Grid></Card>}
+      {tab==="warranty"&&<Card>{sec("📋 Điều khoản bảo hành")}<div style={{fontSize:12,color:"#666",marginBottom:8}}>Tự động điền vào mỗi báo giá mới.</div><textarea value={form.warranty||""} onChange={e=>setForm({...form,warranty:e.target.value})} rows={10} style={{width:"100%",padding:"10px",border:"1px solid #c5cae9",borderRadius:6,fontSize:13,resize:"vertical",boxSizing:"border-box",lineHeight:1.8}} placeholder="Mỗi dòng một điều khoản..." /><div style={{fontSize:11,color:"#aaa",marginTop:4}}>Mỗi dòng một điều khoản.</div></Card>}
+      <div style={{display:"flex",justifyContent:"flex-end"}}><Btn onClick={save}>💾 Lưu tất cả cài đặt</Btn></div>
+    </div>
+  );
+}
+
+function SicoAuto() {
+  const [data, setData] = useStorage();
+  const [page, setPage] = useState("dashboard");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const update = (key, items) => {
+    const newData = { ...data, [key]: items };
+    setData(newData);
+  };
+
+  // ---- ALERTS ----
+  const alerts = [];
+  data.vehicles.forEach(v => {
+    const reg = daysUntil(v.registrationExpiry);
+    const ins = daysUntil(v.insuranceExpiry);
+    const cust = data.customers.find(c => c.id === v.customerId);
+    if (alertLevel(reg) === "danger" || alertLevel(reg) === "expired")
+      alerts.push({ type: "reg", vehicle: v, customer: cust, days: reg, label: "Đăng kiểm" });
+    if (alertLevel(ins) === "danger" || alertLevel(ins) === "expired")
+      alerts.push({ type: "ins", vehicle: v, customer: cust, days: ins, label: "Bảo hiểm" });
+  });
+
+  const nav = [
+    { id: "dashboard", label: "Tổng quan", icon: "dashboard" },
+    { id: "vehicles", label: "Tiếp nhận xe", icon: "car" },
+    { id: "customers", label: "Khách hàng", icon: "customer" },
+    { id: "repair", label: "Lệnh sửa chữa", icon: "wrench" },
+    { id: "quotes", label: "Báo giá", icon: "invoice" },
+    { id: "parts", label: "Vật tư - Kho", icon: "parts" },
+    { id: "technicians", label: "Kỹ thuật viên", icon: "technician" },
+    { id: "accounting", label: "Kế toán", icon: "money" },
+    { id: "reports", label: "Báo cáo", icon: "report" },
+    { id: "expenses", label: "Chi phí vận hành", icon: "money" },
+    { id: "alerts", label: `Nhắc nhở ${alerts.length > 0 ? "🔴" : ""}`, icon: "bell" },
+    { id: "settings_page", label: "⚙️ Cài đặt", icon: "bell" },
+  ];
+
+  const pages = {
+    dashboard: <Dashboard data={data} setPage={setPage} alerts={alerts} />,
+    vehicles: <VehiclesPage data={data} update={update} showToast={showToast} />,
+    customers: <CustomersPage data={data} update={update} showToast={showToast} />,
+    repair: <RepairPage data={data} update={update} showToast={showToast} />,
+    quotes: <QuotesPage data={data} update={update} showToast={showToast} />,
+    parts: <PartsPage data={data} update={update} showToast={showToast} />,
+    technicians: <TechniciansPage data={data} update={update} showToast={showToast} />,
+    accounting: <AccountingPage data={data} />,
+    reports: <ReportsPage data={data} />,
+    expenses: <ExpensesPage data={data} update={update} showToast={showToast} />,
+    alerts: <AlertsPage data={data} alerts={alerts} setPage={setPage} />,
+    settings_page: <SettingsPage data={data} update={update} showToast={showToast} />,
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", fontFamily: "'Segoe UI', sans-serif", background: "#f0f2f5", overflow: "hidden" }}>
+      {/* SIDEBAR */}
+      <div style={{ width: 220, background: "linear-gradient(180deg,#1a237e 0%,#283593 60%,#1565c0 100%)", color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{ padding: "14px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src={LOGO_IMG} alt="SICO AUTO" style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)" }} />
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, color: "#fff" }}>SICO AUTO</div>
+              <div style={{ fontSize: 10, color: "#90caf9", marginTop: 1 }}>Hệ thống quản lý Garage</div>
+            </div>
+          </div>
+        </div>
+        <nav style={{ flex: 1, padding: "8px 0", overflowY: "auto" }}>
+          {nav.map(n => (
+            <div key={n.id} onClick={() => setPage(n.id)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 18px", cursor: "pointer", fontSize: 13, fontWeight: page === n.id ? 700 : 400, background: page === n.id ? "rgba(255,255,255,0.18)" : "transparent", borderLeft: page === n.id ? "3px solid #64b5f6" : "3px solid transparent", color: page === n.id ? "#fff" : "#bbdefb", transition: "all .15s" }}>
+              <Icon name={n.icon} size={15} /> {n.label}
+            </div>
+          ))}
+        </nav>
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.15)" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <button onClick={() => { const j=JSON.stringify(data,null,2); const b=new Blob([j],{type:"application/json"}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download="sico-backup-"+new Date().toISOString().slice(0,10)+".json"; a.click(); URL.revokeObjectURL(u); }} style={{ flex:1, padding:"8px 4px", background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:6, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer" }}>📤 Xuất data</button>
+            <label style={{ flex:1, padding:"8px 4px", background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:6, color:"#fff", fontSize:11, fontWeight:600, cursor:"pointer", textAlign:"center", display:"flex", alignItems:"center", justifyContent:"center" }}>📥 Nhập data<input type="file" accept=".json" style={{ display:"none" }} onChange={e => { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=ev=>{ try{ const d=JSON.parse(ev.target.result); if(window.confirm("Nhập data sẽ GHI ĐÈ. Tiếp tục?")){ Object.keys(d).forEach(k=>update(k,d[k])); alert("Nhập thành công!"); } }catch(err){alert("File lỗi!");} }; r.readAsText(f); e.target.value=""; }} /></label>
+          </div>
+          <div style={{ fontSize: 11, color: "#90caf9", textAlign: "center" }}>© 2026 SICO AUTO v1.0</div>
+        </div>
+      </div>
+      {/* MAIN */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <header style={{ background: "#fff", borderBottom: "1px solid #e0e0e0", padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: "#1a237e" }}>{nav.find(n => n.id === page)?.label}</div>
+          <div style={{ fontSize: 12, color: "#666" }}>{new Date().toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+        </header>
+        <main style={{ flex: 1, overflow: "auto", padding: 20 }}>
+          {pages[page] || <div>Trang không tồn tại</div>}
+        </main>
+      </div>
+      {/* TOAST */}
+      {toast && (
+        <div style={{ position: "fixed", bottom: 24, right: 24, background: toast.type === "success" ? "#43a047" : "#e53935", color: "#fff", padding: "12px 20px", borderRadius: 8, fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.2)" }}>
+          {toast.type === "success" ? "✅" : "❌"} {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===================== SHARED COMPONENTS =====================
+const Card = ({ children, style = {} }) => (
+  <div style={{ background: "#fff", borderRadius: 10, padding: 20, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", ...style }}>{children}</div>
+);
+
+const StatCard = ({ label, value, icon, color = "#1a237e", sub }) => (
+  <div style={{ background: "#fff", borderRadius: 10, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", borderLeft: `4px solid ${color}` }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div>
+        <div style={{ fontSize: 12, color: "#888", fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color }}>{value}</div>
+        {sub && <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{sub}</div>}
+      </div>
+      <span style={{ fontSize: 28 }}>{icon}</span>
+    </div>
+  </div>
+);
+
+const Btn = ({ children, onClick, color = "#1a237e", outline, size = "md", disabled, style = {} }) => {
+  const pad = size === "sm" ? "5px 12px" : "9px 18px";
+  const fs = size === "sm" ? 12 : 13;
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: pad, fontSize: fs, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", borderRadius: 6, border: `2px solid ${color}`, background: outline ? "transparent" : color, color: outline ? color : "#fff", opacity: disabled ? 0.5 : 1, transition: "all .15s", ...style }}>
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ label, value, onChange, type = "text", placeholder, required, options, style = {} }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 4, ...style }}>
+    {label && <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>{label}{required && <span style={{ color: "red" }}> *</span>}</label>}
+    {options ? (
+      <select value={value} onChange={e => onChange(e.target.value)}
+        style={{ padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, background: "#fff" }}>
+        <option value="">-- Chọn --</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    ) : (
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{ padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }} />
+    )}
+  </div>
+);
+
+const Table = ({ headers, rows, emptyMsg = "Không có dữ liệu" }) => (
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <thead>
+        <tr style={{ background: "#e8eaf6" }}>
+          {headers.map((h, i) => <th key={i} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#1a237e", whiteSpace: "nowrap", borderBottom: "2px solid #c5cae9" }}>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan={headers.length} style={{ padding: 24, textAlign: "center", color: "#aaa" }}>{emptyMsg}</td></tr>
+        ) : rows.map((row, i) => (
+          <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+            {row.map((cell, j) => <td key={j} style={{ padding: "9px 12px" }}>{cell}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const Badge = ({ label, color = "#1a237e", bg }) => (
+  <span style={{ background: bg || color + "18", color, fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20, border: `1px solid ${color}40` }}>{label}</span>
+);
+
+const StatusBadge = ({ status }) => {
+  const map = {
+    "Tiếp nhận": ["#f57c00", "#fff3e0"],
+    "Đang sửa": ["#1565c0", "#e3f2fd"],
+    "Chờ phụ tùng": ["#6a1b9a", "#f3e5f5"],
+    "Hoàn thành": ["#2e7d32", "#e8f5e9"],
+    "Đã xuất xưởng": ["#546e7a", "#eceff1"],
+    "Huỷ": ["#c62828", "#ffebee"],
+  };
+  const [c, bg] = map[status] || ["#666", "#eee"];
+  return <Badge label={status} color={c} bg={bg} />;
+};
+
+// ===================== MODAL =====================
+const Modal = ({ title, children, onClose, width = 640 }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: width, maxHeight: "92vh", overflow: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.25)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #eee", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: "#1a237e" }}>{title}</div>
+        <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#666" }}>✕</button>
+      </div>
+      <div style={{ padding: 20 }}>{children}</div>
+    </div>
+  </div>
+);
+
+const Grid = ({ cols = 2, children, gap = 12 }) => (
+  <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap }}>{children}</div>
+);
+
+// ===================== DASHBOARD =====================
+function Dashboard({ data, setPage, alerts }) {
+  const pending = data.repairOrders.filter(r => r.status !== "Đã xuất xưởng" && r.status !== "Huỷ");
+  const done = data.repairOrders.filter(r => r.status === "Hoàn thành" || r.status === "Đã xuất xưởng");
+  const revenue = done.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+  const lowStock = data.parts.filter(p => p.stock <= p.minStock);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <StatCard label="Tổng xe đang sửa" value={pending.length} icon="🔧" color="#1565c0" sub={`${data.vehicles.length} xe trong hệ thống`} />
+        <StatCard label="Khách hàng" value={data.customers.length} icon="👤" color="#2e7d32" sub="Đang hoạt động" />
+        <StatCard label="Doanh thu tháng" value={formatCurrency(revenue)} icon="💰" color="#f57c00" sub="Các lệnh hoàn thành" />
+        <StatCard label="Nhắc nhở" value={alerts.length} icon="🔔" color={alerts.length > 0 ? "#c62828" : "#546e7a"} sub="Đăng kiểm / Bảo hiểm" />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14 }}>
+        <Card>
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 14, fontSize: 15 }}>🔧 Lệnh sửa chữa đang xử lý</div>
+          <Table
+            headers={["Mã LSC", "Biển số", "Khách hàng", "Triệu chứng", "Trạng thái", "KTV"]}
+            rows={pending.slice(0, 6).map(r => {
+              const v = data.vehicles.find(v => v.id === r.vehicleId);
+              const c = data.customers.find(c => c.id === r.customerId);
+              const t = data.technicians.find(t => t.id === r.technicianId);
+              return [
+                <span style={{ fontWeight: 700 }}>#{r.id.slice(-4).toUpperCase()}</span>,
+                v?.licensePlate || "-", c?.name || "-",
+                r.symptoms.slice(0, 40) + (r.symptoms.length > 40 ? "..." : ""),
+                <StatusBadge status={r.status} />, t?.name || "-"
+              ];
+            })}
+            emptyMsg="Không có lệnh sửa chữa nào đang xử lý"
+          />
+        </Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Card>
+            <div style={{ fontWeight: 700, color: "#c62828", marginBottom: 10, fontSize: 15 }}>⚠️ Vật tư sắp hết</div>
+            {lowStock.length === 0 ? <div style={{ color: "#aaa", fontSize: 13 }}>Kho đầy đủ ✅</div> :
+              lowStock.slice(0, 5).map(p => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f5f5f5", fontSize: 13 }}>
+                  <span>{p.name}</span>
+                  <Badge label={`${p.stock} ${p.unit}`} color="#c62828" />
+                </div>
+              ))}
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 10, fontSize: 15 }}>🔔 Nhắc nhở sắp hết hạn</div>
+            {alerts.length === 0 ? <div style={{ color: "#aaa", fontSize: 13 }}>Không có nhắc nhở ✅</div> :
+              alerts.slice(0, 4).map((a, i) => (
+                <div key={i} style={{ padding: "6px 0", borderBottom: "1px solid #f5f5f5", fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: "#c62828" }}>{a.vehicle?.licensePlate}</div>
+                  <div style={{ color: "#666" }}>{a.label}: {a.days < 0 ? `Đã hết hạn ${Math.abs(a.days)} ngày` : `Còn ${a.days} ngày`}</div>
+                </div>
+              ))}
+          </Card>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+        {[
+          { label: "Tiếp nhận xe mới", icon: "🚗", page: "vehicles", color: "#1565c0" },
+          { label: "Tạo lệnh sửa chữa", icon: "🔧", page: "repair", color: "#2e7d32" },
+          { label: "Xuất vật tư", icon: "📦", page: "parts", color: "#f57c00" },
+          { label: "Báo cáo tổng hợp", icon: "📊", page: "reports", color: "#6a1b9a" },
+        ].map(q => (
+          <Card key={q.page} style={{ cursor: "pointer", textAlign: "center", padding: "18px 12px", borderTop: `3px solid ${q.color}` }}
+            onClick={() => setPage(q.page)}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>{q.icon}</div>
+            <div style={{ fontWeight: 700, color: q.color, fontSize: 13 }}>{q.label}</div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===================== CUSTOMERS PAGE =====================
+function CustomersPage({ data, update, showToast }) {
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_CUSTOMER);
+
+  const filtered = data.customers.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.phone.includes(search)
+  );
+
+  const openNew = () => { setForm({ ...EMPTY_CUSTOMER, id: generateId() }); setModal("form"); };
+  const openEdit = (c) => { setForm({ ...c }); setModal("form"); };
+  const save = () => {
+    if (!form.name || !form.phone) return showToast("Vui lòng nhập tên và SĐT", "error");
+    const exists = data.customers.find(c => c.id === form.id);
+    const updated = exists ? data.customers.map(c => c.id === form.id ? form : c) : [...data.customers, form];
+    update("customers", updated);
+    showToast(exists ? "Đã cập nhật khách hàng" : "Đã thêm khách hàng");
+    setModal(null);
+  };
+  const del = (id) => {
+    if (!adminConfirm("xóa")) return;
+    if (!window.confirm("Xóa khách hàng này?")) return;
+    update("customers", data.customers.filter(c => c.id !== id));
+    showToast("Đã xóa khách hàng");
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#666" }}>🔍</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm theo tên, SĐT..."
+              style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, width: 240 }} />
+          </div>
+<div style={{display:"flex",gap:6}}><Btn outline color="#1565c0" onClick={()=>printCustomers(data.customers,data.settings)}>🖨️ In</Btn><Btn onClick={openNew}>➕ Thêm khách hàng</Btn></div>
+        </div>
+      </Card>
+      <Card>
+        <Table
+          headers={["Tên khách hàng", "Điện thoại", "Địa chỉ", "Email", "Số xe", "Thao tác"]}
+          rows={filtered.map(c => {
+            const vehicleCount = data.vehicles.filter(v => v.customerId === c.id).length;
+            return [
+              <span style={{ fontWeight: 700, color: "#1a237e" }}>{c.name}</span>,
+              c.phone, c.address || "-", c.email || "-",
+              <Badge label={`${vehicleCount} xe`} color="#1565c0" />,
+              <div style={{ display: "flex", gap: 6 }}>
+                <Btn size="sm" onClick={() => openEdit(c)} outline>✏️ Sửa</Btn>
+                <Btn size="sm" onClick={() => del(c.id)} color="#c62828" outline>🗑️</Btn>
+              </div>
+            ];
+          })}
+        />
+      </Card>
+      {modal === "form" && (
+        <Modal title={form.id && data.customers.find(c => c.id === form.id) ? "Cập nhật khách hàng" : "Thêm khách hàng"} onClose={() => setModal(null)}>
+          <Grid cols={2} gap={14}>
+            <Input label="Họ và tên" value={form.name} onChange={v => setForm({ ...form, name: v })} required />
+            <Input label="Số điện thoại" value={form.phone} onChange={v => setForm({ ...form, phone: v })} required />
+            <Input label="Email" value={form.email} onChange={v => setForm({ ...form, email: v })} />
+            <Input label="Địa chỉ" value={form.address} onChange={v => setForm({ ...form, address: v })} />
+          </Grid>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={save}>💾 Lưu</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== VEHICLES PAGE =====================
+function VehiclesPage({ data, update, showToast }) {
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_VEHICLE);
+  const [filter, setFilter] = useState("all");
+
+  const filtered = data.vehicles.filter(v => {
+    const q = search.toLowerCase();
+    const match = v.licensePlate.toLowerCase().includes(q) || v.vehicleName.toLowerCase().includes(q) ||
+      v.frameNumber.toLowerCase().includes(q) || (data.customers.find(c => c.id === v.customerId)?.name || "").toLowerCase().includes(q);
+    if (!match) return false;
+    if (filter === "reg") return alertLevel(daysUntil(v.registrationExpiry)) !== "ok";
+    if (filter === "ins") return alertLevel(daysUntil(v.insuranceExpiry)) !== "ok";
+    return true;
+  });
+
+  const openNew = () => { setForm({ ...EMPTY_VEHICLE, id: generateId() }); setModal("form"); };
+  const openEdit = (v) => { setForm({ ...v }); setModal("form"); };
+  const save = () => {
+    if (!form.licensePlate || !form.customerId) return showToast("Vui lòng nhập biển số và chọn khách hàng", "error");
+    const exists = data.vehicles.find(v => v.id === form.id);
+    const updated = exists ? data.vehicles.map(v => v.id === form.id ? form : v) : [...data.vehicles, form];
+    update("vehicles", updated);
+    showToast(exists ? "Đã cập nhật thông tin xe" : "Đã tiếp nhận xe mới");
+    setModal(null);
+  };
+  const del = (id) => {
+    if (!adminConfirm("xóa")) return;
+    if (!window.confirm("Xóa xe này?")) return;
+    update("vehicles", data.vehicles.filter(v => v.id !== id));
+    showToast("Đã xóa xe");
+  };
+
+  const regLevel = (v) => alertLevel(daysUntil(v.registrationExpiry));
+  const insLevel = (v) => alertLevel(daysUntil(v.insuranceExpiry));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Biển số, tên xe, khách hàng..."
+              style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, width: 260 }} />
+            <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
+              <option value="all">Tất cả xe</option>
+              <option value="reg">⚠️ Đăng kiểm gần hết</option>
+              <option value="ins">⚠️ Bảo hiểm gần hết</option>
+            </select>
+          </div>
+          <Btn onClick={openNew}>➕ Tiếp nhận xe</Btn>
+        </div>
+      </Card>
+      <Card>
+        <Table
+          headers={["Biển số", "Xe / Nhãn hiệu", "Số khung", "Số máy", "Km hiện tại", "Khách hàng", "Đăng kiểm", "Bảo hiểm", "Thao tác"]}
+          rows={filtered.map(v => {
+            const cust = data.customers.find(c => c.id === v.customerId);
+            const rl = regLevel(v), il = insLevel(v);
+            const regColor = { danger: "#c62828", expired: "#c62828", warning: "#f57c00", ok: "#2e7d32" }[rl] || "#666";
+            const insColor = { danger: "#c62828", expired: "#c62828", warning: "#f57c00", ok: "#2e7d32" }[il] || "#666";
+            return [
+              <span style={{ fontWeight: 800, color: "#1a237e", fontSize: 14 }}>{v.licensePlate}</span>,
+              <div><div style={{ fontWeight: 700 }}>{v.vehicleName}</div><div style={{ fontSize: 11, color: "#888" }}>{v.brand} · {v.type} · {v.color}</div></div>,
+              <span style={{ fontSize: 11, fontFamily: "monospace" }}>{v.frameNumber}</span>,
+              <span style={{ fontSize: 11, fontFamily: "monospace" }}>{v.engineNumber}</span>,
+              <span>{Number(v.currentKm).toLocaleString()} km</span>,
+              cust?.name || "-",
+              <span style={{ color: regColor, fontWeight: 700, fontSize: 12 }}>{formatDate(v.registrationExpiry)}{rl !== "ok" && " ⚠️"}</span>,
+              <span style={{ color: insColor, fontWeight: 700, fontSize: 12 }}>{formatDate(v.insuranceExpiry)}{il !== "ok" && " ⚠️"}</span>,
+              <div style={{ display: "flex", gap: 4 }}>
+                <Btn size="sm" onClick={() => printVehicleReceipt(v, data)} outline color="#1565c0">🖨️</Btn>
+                <Btn size="sm" onClick={() => openEdit(v)} outline>✏️</Btn>
+                <Btn size="sm" onClick={() => del(v.id)} color="#c62828" outline>🗑️</Btn>
+              </div>
+            ];
+          })}
+        />
+      </Card>
+      {modal === "form" && (
+        <Modal title="Thông tin xe" onClose={() => setModal(null)} width={760}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1a237e", marginBottom: 10 }}>📋 Thông tin cơ bản</div>
+          <Grid cols={3} gap={12}>
+            <Input label="Biển số xe" value={form.licensePlate} onChange={v => setForm({ ...form, licensePlate: v.toUpperCase() })} required />
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Khách hàng <span style={{ color: "red" }}>*</span></label>
+              <select value={form.customerId || ""} onChange={e => setForm({ ...form, customerId: e.target.value })}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                <option value="">-- Chọn khách hàng --</option>
+                {data.customers.map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
+              </select>
+            </div>
+            <Input label="Tên xe" value={form.vehicleName} onChange={v => setForm({ ...form, vehicleName: v })} />
+            <Input label="Nhãn hiệu" value={form.brand} onChange={v => setForm({ ...form, brand: v })} options={VEHICLE_BRANDS} />
+            <Input label="Chủng loại" value={form.type} onChange={v => setForm({ ...form, type: v })} options={VEHICLE_TYPES} />
+            <Input label="Màu sắc" value={form.color} onChange={v => setForm({ ...form, color: v })} />
+            <Input label="Năm sản xuất" value={form.year} onChange={v => setForm({ ...form, year: v })} />
+            <Input label="Km hiện tại" value={form.currentKm} onChange={v => setForm({ ...form, currentKm: v })} type="number" />
+            <Input label="Km bảo dưỡng tiếp theo" value={form.nextMaintenanceKm} onChange={v => setForm({ ...form, nextMaintenanceKm: v })} type="number" />
+          </Grid>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1a237e", margin: "14px 0 10px" }}>🔩 Số khung & Số máy</div>
+          <Grid cols={2} gap={12}>
+            <Input label="Số khung (VIN)" value={form.frameNumber} onChange={v => setForm({ ...form, frameNumber: v.toUpperCase() })} />
+            <Input label="Số máy" value={form.engineNumber} onChange={v => setForm({ ...form, engineNumber: v.toUpperCase() })} />
+          </Grid>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#1a237e", margin: "14px 0 10px" }}>📅 Ngày quan trọng</div>
+          <Grid cols={3} gap={12}>
+            <Input label="Ngày bảo dưỡng gần nhất" value={form.lastMaintenanceDate} onChange={v => setForm({ ...form, lastMaintenanceDate: v })} type="date" />
+            <Input label="Hạn đăng kiểm" value={form.registrationExpiry} onChange={v => setForm({ ...form, registrationExpiry: v })} type="date" />
+            <Input label="Hạn bảo hiểm" value={form.insuranceExpiry} onChange={v => setForm({ ...form, insuranceExpiry: v })} type="date" />
+          </Grid>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Ghi chú</label>
+            <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+              style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+            <Btn outline color="#1565c0" onClick={() => printVehicleReceipt(form, data)}>🖨️ In phiếu tiếp nhận</Btn>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={save}>💾 Lưu thông tin xe</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== REPAIR ORDER PAGE =====================
+function RepairPage({ data, update, showToast }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_REPAIR_ORDER);
+  const [orderParts, setOrderParts] = useState([]);
+
+  const filtered = data.repairOrders.filter(r => {
+    const v = data.vehicles.find(v => v.id === r.vehicleId);
+    const c = data.customers.find(c => c.id === r.customerId);
+    const q = search.toLowerCase();
+    const match = (v?.licensePlate || "").toLowerCase().includes(q) || (c?.name || "").toLowerCase().includes(q) || r.id.toLowerCase().includes(q);
+    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    return match;
+  });
+
+  const openNew = () => {
+    setForm({ ...EMPTY_REPAIR_ORDER, id: generateId(), receiveDate: today() });
+    setOrderParts([]);
+    setModal("form");
+  };
+  const openEdit = (r) => {
+    setForm({ ...r });
+    setOrderParts(r.parts || []);
+    setModal("form");
+  };
+  const openView = (r) => { setForm({ ...r }); setOrderParts(r.parts || []); setModal("view"); };
+
+  const calcTotal = (f, pts) => {
+    const totalParts = pts.reduce((s, p) => s + (p.qty * p.price), 0);
+    const totalAmount = (Number(f.totalLabor) || 0) + totalParts - (Number(f.discount) || 0);
+    return { totalParts, totalAmount };
+  };
+
+  const addPart = () => setOrderParts([...orderParts, { partId: "", name: "", qty: 1, unit: "", price: 0 }]);
+  const removePart = (i) => setOrderParts(orderParts.filter((_, idx) => idx !== i));
+  const updatePart = (i, field, val) => {
+    const pts = [...orderParts];
+    pts[i] = { ...pts[i], [field]: val };
+    if (field === "partId") {
+      const p = data.parts.find(p => p.id === val);
+      if (p) { pts[i].name = p.name; pts[i].unit = p.unit; pts[i].price = p.salePrice; }
+    }
+    setOrderParts(pts);
+  };
+
+  const save = () => {
+    if (!form.vehicleId || !form.customerId) return showToast("Chọn xe và khách hàng", "error");
+    const { totalParts, totalAmount } = calcTotal(form, orderParts);
+    const saved = { ...form, parts: orderParts, totalParts, totalAmount };
+    const exists = data.repairOrders.find(r => r.id === form.id);
+    const updated = exists ? data.repairOrders.map(r => r.id === form.id ? saved : r) : [...data.repairOrders, saved];
+    // If status changed to Hoàn thành, deduct stock
+    if (form.status === "Hoàn thành" && orderParts.length > 0) {
+      const newParts = data.parts.map(p => {
+        const used = orderParts.find(op => op.partId === p.id);
+        if (used) return { ...p, stock: Math.max(0, p.stock - Number(used.qty)) };
+        return p;
+      });
+      update("parts", newParts);
+      // Log movement
+      const movements = [...data.stockMovements, ...orderParts.filter(op => op.partId).map(op => ({
+        id: generateId(), date: today(), type: "Xuất", partId: op.partId,
+        partName: op.name, qty: op.qty, ref: `LSC-${form.id.slice(-4).toUpperCase()}`, note: "Xuất theo LSC"
+      }))];
+      update("stockMovements", movements);
+    }
+    update("repairOrders", updated);
+    showToast(exists ? "Đã cập nhật lệnh sửa chữa" : "Đã tạo lệnh sửa chữa");
+    setModal(null);
+  };
+
+  const { totalParts, totalAmount } = calcTotal(form, orderParts);
+
+  const statusOptions = ["Tiếp nhận", "Đang sửa", "Chờ phụ tùng", "Hoàn thành", "Đã xuất xưởng", "Huỷ"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm biển số, khách hàng..."
+              style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, width: 240 }} />
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13 }}>
+              <option value="all">Tất cả trạng thái</option>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <Btn onClick={openNew}>➕ Tạo lệnh sửa chữa</Btn>
+        </div>
+      </Card>
+      <Card>
+        <Table
+          headers={["Mã LSC", "Ngày", "Biển số", "Khách hàng", "Triệu chứng", "KTV", "Tổng tiền", "Trạng thái", "Thao tác"]}
+          rows={filtered.map(r => {
+            const v = data.vehicles.find(v => v.id === r.vehicleId);
+            const c = data.customers.find(c => c.id === r.customerId);
+            const t = data.technicians.find(t => t.id === r.technicianId);
+            return [
+              <span style={{ fontWeight: 800, color: "#1a237e" }}>#{r.id.slice(-4).toUpperCase()}</span>,
+              formatDate(r.receiveDate),
+              <span style={{ fontWeight: 700 }}>{v?.licensePlate || "-"}</span>,
+              c?.name || "-",
+              r.symptoms.slice(0, 35) + (r.symptoms.length > 35 ? "..." : ""),
+              t?.name || "-",
+              <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(r.totalAmount)}</span>,
+              <StatusBadge status={r.status} />,
+              <div style={{ display: "flex", gap: 4 }}>
+                <Btn size="sm" onClick={() => openView(r)} outline color="#1565c0">👁️</Btn>
+                <Btn size="sm" onClick={() => printRepairOrder(r, r.parts||[], data)} outline color="#2e7d32">🖨️</Btn>
+                <Btn size="sm" onClick={() => openEdit(r)} outline>✏️</Btn>
+                <Btn size="sm" onClick={() => { if(!adminConfirm("xóa lệnh SC"))return; if(!window.confirm("Xóa lệnh SC?"))return; update("repairOrders",data.repairOrders.filter(x=>x.id!==r.id)); showToast("Đã xóa"); }} outline color="#c62828">🗑️</Btn>
+              </div>
+            ];
+          })}
+        />
+      </Card>
+
+      {(modal === "form" || modal === "view") && (
+        <Modal title={modal === "view" ? `Lệnh SC #${form.id.slice(-4).toUpperCase()}` : "Lệnh sửa chữa"} onClose={() => setModal(null)} width={820}>
+          <div style={{ pointerEvents: modal === "view" ? "none" : "auto", opacity: modal === "view" ? 0.92 : 1 }}>
+            <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 10 }}>🚗 Thông tin xe & khách hàng</div>
+            <Grid cols={3} gap={12}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Xe <span style={{ color: "red" }}>*</span></label>
+                <select value={form.vehicleId || ""} onChange={e => {
+                  const v = data.vehicles.find(v => v.id === e.target.value);
+                  setForm({ ...form, vehicleId: e.target.value, customerId: v?.customerId || form.customerId });
+                }} style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                  <option value="">-- Chọn xe --</option>
+                  {data.vehicles.map(v => <option key={v.id} value={v.id}>{v.licensePlate} - {v.vehicleName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Khách hàng</label>
+                <select value={form.customerId || ""} onChange={e => setForm({ ...form, customerId: e.target.value })}
+                  style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                  <option value="">-- Chọn khách hàng --</option>
+                  {data.customers.map(c => <option key={c.id} value={c.id}>{c.name} - {c.phone}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Kỹ thuật viên</label>
+                <select value={form.technicianId || ""} onChange={e => setForm({ ...form, technicianId: e.target.value })}
+                  style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                  <option value="">-- Chọn KTV --</option>
+                  {data.technicians.filter(t => t.status === "active").map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <Input label="Ngày tiếp nhận" value={form.receiveDate} onChange={v => setForm({ ...form, receiveDate: v })} type="date" />
+              <Input label="Km tiếp nhận" value={form.receiveKm} onChange={v => setForm({ ...form, receiveKm: v })} type="number" />
+              <Input label="Trạng thái" value={form.status} onChange={v => setForm({ ...form, status: v })} options={statusOptions} />
+            </Grid>
+
+            <div style={{ fontWeight: 700, color: "#1a237e", margin: "14px 0 10px" }}>📋 Triệu chứng & Chẩn đoán</div>
+            <Grid cols={2} gap={12}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Triệu chứng khách mô tả</label>
+                <textarea value={form.symptoms} onChange={e => setForm({ ...form, symptoms: e.target.value })} rows={3}
+                  style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4, resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Chẩn đoán kỹ thuật</label>
+                <textarea value={form.diagnosis} onChange={e => setForm({ ...form, diagnosis: e.target.value })} rows={3}
+                  style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4, resize: "vertical", boxSizing: "border-box" }} />
+              </div>
+            </Grid>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 10px" }}>
+              <div style={{ fontWeight: 700, color: "#1a237e" }}>🔩 Vật tư sử dụng</div>
+              {modal === "form" && <Btn size="sm" onClick={addPart}>➕ Thêm vật tư</Btn>}
+            </div>
+            <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#e8eaf6" }}>
+                    {["Vật tư / Phụ tùng", "Số lượng", "Đơn vị", "Đơn giá", "Thành tiền", ""].map((h, i) => (
+                      <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, color: "#1a237e" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderParts.length === 0 ? (
+                    <tr><td colSpan={6} style={{ padding: 12, textAlign: "center", color: "#aaa" }}>Chưa có vật tư</td></tr>
+                  ) : orderParts.map((op, i) => (
+                    <tr key={i} style={{ borderTop: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: "6px 10px" }}>
+                        {modal === "form" ? (
+                          <select value={op.partId} onChange={e => updatePart(i, "partId", e.target.value)}
+                            style={{ width: "100%", padding: "5px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }}>
+                            <option value="">-- Chọn vật tư --</option>
+                            {data.parts.map(p => <option key={p.id} value={p.id}>{p.name} (Tồn: {p.stock})</option>)}
+                          </select>
+                        ) : op.name}
+                      </td>
+                      <td style={{ padding: "6px 10px" }}>
+                        {modal === "form" ? (
+                          <input type="number" value={op.qty} onChange={e => updatePart(i, "qty", e.target.value)}
+                            style={{ width: 60, padding: "5px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} />
+                        ) : op.qty}
+                      </td>
+                      <td style={{ padding: "6px 10px" }}>{op.unit}</td>
+                      <td style={{ padding: "6px 10px" }}>
+                        {modal === "form" ? (
+                          <input type="number" value={op.price} onChange={e => updatePart(i, "price", e.target.value)}
+                            style={{ width: 90, padding: "5px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} />
+                        ) : formatCurrency(op.price)}
+                      </td>
+                      <td style={{ padding: "6px 10px", fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(op.qty * op.price)}</td>
+                      <td style={{ padding: "6px 10px" }}>
+                        {modal === "form" && <button onClick={() => removePart(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c62828", fontSize: 16 }}>✕</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ fontWeight: 700, color: "#1a237e", margin: "14px 0 10px" }}>💰 Quyết toán</div>
+            <Grid cols={3} gap={12}>
+              <Input label="Tiền công lao động (đ)" value={form.totalLabor} onChange={v => setForm({ ...form, totalLabor: v })} type="number" />
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", gap: 4 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Tiền vật tư (tự tính)</label>
+                <div style={{ padding: "7px 10px", background: "#f5f5f5", borderRadius: 6, fontSize: 13, fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(totalParts)}</div>
+              </div>
+              <Input label="Chiết khấu (đ)" value={form.discount} onChange={v => setForm({ ...form, discount: v })} type="number" />
+            </Grid>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 16, marginTop: 12, padding: "12px 16px", background: "#e8f5e9", borderRadius: 8 }}>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 12, color: "#666" }}>Tổng cộng</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#2e7d32" }}>{formatCurrency(totalAmount)}</div>
+              </div>
+            </div>
+          </div>
+          {modal === "form" && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+              {modal==="view"&&<Btn outline color="#1565c0" onClick={()=>printRepairOrder(form,orderParts,data)}>🖨️ In phiếu SC</Btn>}
+              <Btn outline color="#666" onClick={() => setModal(null)}>{modal==="view"?"Đóng":"Huỷ"}</Btn>
+              {modal!=="view"&&<Btn onClick={save}>💾 Lưu lệnh sửa chữa</Btn>}
+            </div>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== QUOTES PAGE =====================
+function QuotesPage({ data, update, showToast }) {
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({ id: null, vehicleId: "", customerId: "", date: today(), items: [], notes: "", status: "Chờ duyệt", discount: 0 });
+
+  const addItem = () => setForm(f => ({ ...f, items: [...f.items, { name: "", qty: 1, unit: "Cái", price: 0 }] }));
+  const removeItem = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
+  const updateItem = (i, field, val) => setForm(f => { const items = [...f.items]; items[i] = { ...items[i], [field]: val }; return { ...f, items }; });
+  const total = form.items.reduce((s, it) => s + (it.qty * it.price), 0) - Number(form.discount || 0);
+
+  const save = () => {
+    if (!form.customerId) return showToast("Chọn khách hàng", "error");
+    const id = form.id || generateId();
+    const saved = { ...form, id, total };
+    const exists = (data.quotes || []).find(q => q.id === form.id);
+    const updated = exists ? (data.quotes || []).map(q => q.id === form.id ? saved : q) : [...(data.quotes || []), saved];
+    update("quotes", updated);
+    showToast("Đã lưu báo giá");
+    setModal(null);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, color: "#1a237e" }}>Danh sách báo giá ({(data.quotes || []).length})</div>
+          <Btn onClick={() => { setForm({ id: null, vehicleId: "", customerId: "", date: today(), items: [], notes: "", status: "Chờ duyệt", discount: 0 }); setModal("form"); }}>➕ Tạo báo giá</Btn>
+        </div>
+      </Card>
+      <Card>
+        <Table
+          headers={["Mã BG", "Ngày", "Khách hàng", "Xe", "Tổng tiền", "Trạng thái", "Thao tác"]}
+          rows={(data.quotes || []).map(q => {
+            const c = data.customers.find(c => c.id === q.customerId);
+            const v = data.vehicles.find(v => v.id === q.vehicleId);
+            return [
+              <span style={{ fontWeight: 800, color: "#1a237e" }}>#{(q.id || "").slice(-4).toUpperCase()}</span>,
+              formatDate(q.date), c?.name || "-", v?.licensePlate || "-",
+              <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(q.total)}</span>,
+              <Badge label={q.status} color={q.status === "Đã duyệt" ? "#2e7d32" : "#f57c00"} />,
+              <Btn size="sm" onClick={() => { setForm(q); setModal("form"); }} outline>✏️ Sửa</Btn>
+            ];
+          })}
+          emptyMsg="Chưa có báo giá nào"
+        />
+      </Card>
+      {modal === "form" && (
+        <Modal title="Báo giá dịch vụ" onClose={() => setModal(null)} width={760}>
+          <Grid cols={3} gap={12}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Khách hàng</label>
+              <select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                <option value="">-- Chọn --</option>
+                {data.customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Xe</label>
+              <select value={form.vehicleId} onChange={e => setForm({ ...form, vehicleId: e.target.value })}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                <option value="">-- Chọn xe --</option>
+                {data.vehicles.map(v => <option key={v.id} value={v.id}>{v.licensePlate}</option>)}
+              </select>
+            </div>
+            <Input label="Trạng thái" value={form.status} onChange={v => setForm({ ...form, status: v })} options={["Chờ duyệt", "Đã duyệt", "Huỷ"]} />
+          </Grid>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0 8px" }}>
+            <div style={{ fontWeight: 700, color: "#1a237e" }}>Hạng mục báo giá</div>
+            <Btn size="sm" onClick={addItem}>➕ Thêm hạng mục</Btn>
+          </div>
+          <div style={{ border: "1px solid #e0e0e0", borderRadius: 8, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ background: "#e8eaf6" }}>
+                {["Tên dịch vụ / vật tư", "SL", "ĐV", "Đơn giá", "Thành tiền", ""].map((h, i) => (
+                  <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, color: "#1a237e" }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {form.items.length === 0 ? <tr><td colSpan={6} style={{ padding: 12, textAlign: "center", color: "#aaa" }}>Chưa có hạng mục</td></tr> :
+                  form.items.map((it, i) => (
+                    <tr key={i} style={{ borderTop: "1px solid #f0f0f0" }}>
+                      <td style={{ padding: "5px 8px" }}><input value={it.name} onChange={e => updateItem(i, "name", e.target.value)} style={{ width: "100%", padding: "4px 8px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} /></td>
+                      <td style={{ padding: "5px 8px" }}><input type="number" value={it.qty} onChange={e => updateItem(i, "qty", e.target.value)} style={{ width: 55, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} /></td>
+                      <td style={{ padding: "5px 8px" }}><input value={it.unit} onChange={e => updateItem(i, "unit", e.target.value)} style={{ width: 55, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} /></td>
+                      <td style={{ padding: "5px 8px" }}><input type="number" value={it.price} onChange={e => updateItem(i, "price", e.target.value)} style={{ width: 90, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} /></td>
+                      <td style={{ padding: "5px 8px", fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(it.qty * it.price)}</td>
+                      <td style={{ padding: "5px 8px" }}><button onClick={() => removeItem(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c62828", fontSize: 16 }}>✕</button></td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 16, marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Chiết khấu (đ):</label>
+              <input type="number" value={form.discount} onChange={e => setForm({ ...form, discount: e.target.value })} style={{ width: 100, padding: "5px 8px", border: "1px solid #ddd", borderRadius: 4, fontSize: 13 }} />
+            </div>
+            <div style={{ background: "#e8f5e9", padding: "8px 16px", borderRadius: 8, fontWeight: 800, color: "#2e7d32", fontSize: 18 }}>Tổng: {formatCurrency(total)}</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={save}>💾 Lưu báo giá</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== PARTS PAGE =====================
+function PartsPage({ data, update, showToast }) {
+  const [tab, setTab] = useState("inventory");
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_PART);
+  const [moveForm, setMoveForm] = useState({ partId: "", type: "Nhập", qty: 1, note: "", date: today() });
+
+  const filtered = data.parts.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.code.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openNew = () => { setForm({ ...EMPTY_PART, id: generateId() }); setModal("part"); };
+  const openEdit = (p) => { setForm({ ...p }); setModal("part"); };
+  const savePart = () => {
+    if (!form.name || !form.code) return showToast("Nhập mã và tên vật tư", "error");
+    const exists = data.parts.find(p => p.id === form.id);
+    const updated = exists ? data.parts.map(p => p.id === form.id ? form : p) : [...data.parts, form];
+    update("parts", updated);
+    showToast(exists ? "Đã cập nhật" : "Đã thêm vật tư");
+    setModal(null);
+  };
+  const del = (id) => {
+    if (!adminConfirm("xóa")) return;
+    if (!window.confirm("Xóa vật tư?")) return;
+    update("parts", data.parts.filter(p => p.id !== id));
+    showToast("Đã xóa");
+  };
+  const saveMove = () => {
+    if (!moveForm.partId || !moveForm.qty) return showToast("Chọn vật tư và số lượng", "error");
+    const part = data.parts.find(p => p.id === moveForm.partId);
+    if (!part) return;
+    const newQty = moveForm.type === "Nhập" ? part.stock + Number(moveForm.qty) : Math.max(0, part.stock - Number(moveForm.qty));
+    const newParts = data.parts.map(p => p.id === moveForm.partId ? { ...p, stock: newQty } : p);
+    const movement = { id: generateId(), date: moveForm.date, type: moveForm.type, partId: moveForm.partId, partName: part.name, qty: Number(moveForm.qty), note: moveForm.note, ref: moveForm.type + "-" + today() };
+    update("parts", newParts);
+    update("stockMovements", [...data.stockMovements, movement]);
+    showToast(`Đã ${moveForm.type} kho thành công`);
+    setMoveForm({ partId: "", type: "Nhập", qty: 1, note: "", date: today() });
+    setModal(null);
+  };
+
+  const tabs = [
+    { id: "inventory", label: "📦 Tồn kho" },
+    { id: "movements", label: "📋 Xuất nhập kho" },
+    { id: "lowstock", label: `⚠️ Sắp hết (${data.parts.filter(p => p.stock <= p.minStock).length})` }
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ flex: 1, padding: "12px", border: "none", background: tab === t.id ? "#1a237e" : "transparent", color: tab === t.id ? "#fff" : "#666", fontWeight: tab === t.id ? 700 : 400, cursor: "pointer", fontSize: 13, transition: "all .15s" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "inventory" && (
+        <>
+          <Card>
+            <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm mã, tên vật tư..."
+                style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, width: 260 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn outline onClick={() => setModal("move")}>📤 Xuất / Nhập kho</Btn>
+                <Btn onClick={openNew}>➕ Thêm vật tư</Btn>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <Table
+              headers={["Mã", "Tên vật tư", "Nhóm", "ĐV", "Giá vốn", "Giá bán", "Tồn kho", "Vị trí", "Thao tác"]}
+              rows={filtered.map(p => [
+                <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#1a237e" }}>{p.code}</span>,
+                p.name, p.category, p.unit,
+                formatCurrency(p.costPrice), formatCurrency(p.salePrice),
+                <span style={{ fontWeight: 700, color: p.stock <= p.minStock ? "#c62828" : "#2e7d32" }}>{p.stock} {p.unit} {p.stock <= p.minStock ? "⚠️" : ""}</span>,
+                p.location || "-",
+                <div style={{ display: "flex", gap: 4 }}>
+                  <Btn size="sm" onClick={() => openEdit(p)} outline>✏️</Btn>
+                  <Btn size="sm" onClick={() => del(p.id)} color="#c62828" outline>🗑️</Btn>
+                </div>
+              ])}
+            />
+          </Card>
+        </>
+      )}
+
+      {tab === "movements" && (
+        <Card>
+          <Table
+            headers={["Ngày", "Loại", "Vật tư", "Số lượng", "Chứng từ", "Ghi chú"]}
+            rows={(data.stockMovements || []).slice().reverse().map(m => [
+              formatDate(m.date),
+              <Badge label={m.type} color={m.type === "Nhập" ? "#2e7d32" : "#f57c00"} />,
+              m.partName, m.qty, m.ref || "-", m.note || "-"
+            ])}
+            emptyMsg="Chưa có giao dịch kho"
+          />
+        </Card>
+      )}
+
+      {tab === "lowstock" && (
+        <Card>
+          <div style={{ marginBottom: 12, color: "#c62828", fontWeight: 700 }}>⚠️ Các vật tư có tồn kho dưới mức tối thiểu</div>
+          <Table
+            headers={["Mã", "Tên vật tư", "Tồn hiện tại", "Tồn tối thiểu", "Cần nhập thêm"]}
+            rows={data.parts.filter(p => p.stock <= p.minStock).map(p => [
+              p.code, p.name,
+              <span style={{ color: "#c62828", fontWeight: 700 }}>{p.stock} {p.unit}</span>,
+              `${p.minStock} ${p.unit}`,
+              <span style={{ color: "#f57c00", fontWeight: 700 }}>{Math.max(0, p.minStock * 2 - p.stock)} {p.unit}</span>
+            ])}
+            emptyMsg="Kho đủ hàng ✅"
+          />
+        </Card>
+      )}
+
+      {modal === "part" && (
+        <Modal title={data.parts.find(p => p.id === form.id) ? "Cập nhật vật tư" : "Thêm vật tư"} onClose={() => setModal(null)}>
+          <Grid cols={2} gap={12}>
+            <Input label="Mã vật tư" value={form.code} onChange={v => setForm({ ...form, code: v })} required />
+            <Input label="Tên vật tư" value={form.name} onChange={v => setForm({ ...form, name: v })} required />
+            <Input label="Nhóm / Danh mục" value={form.category} onChange={v => setForm({ ...form, category: v })} />
+            <Input label="Đơn vị tính" value={form.unit} onChange={v => setForm({ ...form, unit: v })} />
+            <Input label="Giá vốn (đ)" value={form.costPrice} onChange={v => setForm({ ...form, costPrice: v })} type="number" />
+            <Input label="Giá bán (đ)" value={form.salePrice} onChange={v => setForm({ ...form, salePrice: v })} type="number" />
+            <Input label="Tồn kho hiện tại" value={form.stock} onChange={v => setForm({ ...form, stock: v })} type="number" />
+            <Input label="Tồn kho tối thiểu" value={form.minStock} onChange={v => setForm({ ...form, minStock: v })} type="number" />
+            <Input label="Vị trí lưu kho" value={form.location} onChange={v => setForm({ ...form, location: v })} style={{ gridColumn: "span 2" }} />
+          </Grid>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={savePart}>💾 Lưu</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "move" && (
+        <Modal title="Xuất / Nhập kho" onClose={() => setModal(null)} width={480}>
+          <Grid cols={2} gap={12}>
+            <Input label="Loại giao dịch" value={moveForm.type} onChange={v => setMoveForm({ ...moveForm, type: v })} options={["Nhập", "Xuất"]} />
+            <Input label="Ngày" value={moveForm.date} onChange={v => setMoveForm({ ...moveForm, date: v })} type="date" />
+            <div style={{ gridColumn: "span 2" }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#555" }}>Vật tư</label>
+              <select value={moveForm.partId} onChange={e => setMoveForm({ ...moveForm, partId: e.target.value })}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4 }}>
+                <option value="">-- Chọn vật tư --</option>
+                {data.parts.map(p => <option key={p.id} value={p.id}>{p.name} (Tồn: {p.stock} {p.unit})</option>)}
+              </select>
+            </div>
+            <Input label="Số lượng" value={moveForm.qty} onChange={v => setMoveForm({ ...moveForm, qty: v })} type="number" />
+            <Input label="Ghi chú" value={moveForm.note} onChange={v => setMoveForm({ ...moveForm, note: v })} />
+          </Grid>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={saveMove}>{moveForm.type === "Nhập" ? "📥 Nhập kho" : "📤 Xuất kho"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== TECHNICIANS PAGE =====================
+function TechniciansPage({ data, update, showToast }) {
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_TECHNICIAN);
+  const [reportModal, setReportModal] = useState(null);
+  const [reportDate, setReportDate] = useState(today());
+
+  const openNew = () => { setForm({ ...EMPTY_TECHNICIAN, id: generateId() }); setModal("form"); };
+  const openEdit = (t) => { setForm({ ...t }); setModal("form"); };
+  const save = () => {
+    if (!form.name) return showToast("Nhập tên kỹ thuật viên", "error");
+    const exists = data.technicians.find(t => t.id === form.id);
+    const updated = exists ? data.technicians.map(t => t.id === form.id ? form : t) : [...data.technicians, form];
+    update("technicians", updated);
+    showToast("Đã lưu");
+    setModal(null);
+  };
+
+  const getReport = (techId) => {
+    return data.repairOrders.filter(r => r.technicianId === techId && r.receiveDate === reportDate);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, color: "#1a237e" }}>Danh sách kỹ thuật viên ({data.technicians.length})</div>
+          <Btn onClick={openNew}>➕ Thêm KTV</Btn>
+        </div>
+      </Card>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+        {data.technicians.map(t => {
+          const orders = data.repairOrders.filter(r => r.technicianId === t.id);
+          const done = orders.filter(r => r.status === "Hoàn thành" || r.status === "Đã xuất xưởng");
+          const revenue = done.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+          return (
+            <Card key={t.id} style={{ borderTop: `3px solid ${t.status === "active" ? "#2e7d32" : "#999"}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#1a237e" }}>👨‍🔧 {t.name}</div>
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{t.phone}</div>
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>{t.speciality}</div>
+                </div>
+                <Badge label={t.status === "active" ? "Đang làm" : "Nghỉ"} color={t.status === "active" ? "#2e7d32" : "#999"} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                <div style={{ background: "#e8eaf6", borderRadius: 6, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#1a237e" }}>{orders.length}</div>
+                  <div style={{ fontSize: 11, color: "#666" }}>Tổng lệnh</div>
+                </div>
+                <div style={{ background: "#e8f5e9", borderRadius: 6, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#2e7d32" }}>{formatCurrency(revenue)}</div>
+                  <div style={{ fontSize: 11, color: "#666" }}>Doanh thu</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                <Btn size="sm" onClick={() => { setReportModal(t); setReportDate(today()); }} outline color="#1565c0">📊 Báo cáo ngày</Btn>
+                <Btn size="sm" onClick={() => { if(!adminConfirm("xóa KTV"))return; if(!window.confirm("Xóa KTV "+t.name+"?"))return; update("technicians",data.technicians.filter(x=>x.id!==t.id)); showToast("Đã xóa"); }} outline color="#c62828">🗑️</Btn>
+                <Btn size="sm" onClick={() => openEdit(t)} outline>✏️ Sửa</Btn>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      {modal === "form" && (
+        <Modal title="Thông tin kỹ thuật viên" onClose={() => setModal(null)} width={440}>
+          <Grid cols={2} gap={12}>
+            <Input label="Họ và tên" value={form.name} onChange={v => setForm({ ...form, name: v })} required style={{ gridColumn: "span 2" }} />
+            <Input label="Số điện thoại" value={form.phone} onChange={v => setForm({ ...form, phone: v })} />
+            <Input label="Trạng thái" value={form.status} onChange={v => setForm({ ...form, status: v })} options={["active", "inactive"]} />
+            <Input label="Chuyên môn" value={form.speciality} onChange={v => setForm({ ...form, speciality: v })} style={{ gridColumn: "span 2" }} />
+          </Grid>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={save}>💾 Lưu</Btn>
+          </div>
+        </Modal>
+      )}
+      {reportModal && (
+        <Modal title={`Báo cáo ngày - ${reportModal.name}`} onClose={() => setReportModal(null)} width={700}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+            <Input label="Ngày báo cáo" value={reportDate} onChange={v => setReportDate(v)} type="date" />
+          </div>
+          {(() => {
+            const rpts = getReport(reportModal.id);
+            const totalRev = rpts.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+            return (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+                  <StatCard label="Số lệnh hôm nay" value={rpts.length} icon="🔧" color="#1565c0" />
+                  <StatCard label="Hoàn thành" value={rpts.filter(r => r.status === "Hoàn thành" || r.status === "Đã xuất xưởng").length} icon="✅" color="#2e7d32" />
+                  <StatCard label="Doanh thu" value={formatCurrency(totalRev)} icon="💰" color="#f57c00" />
+                </div>
+                <Table
+                  headers={["LSC", "Xe", "Triệu chứng", "Trạng thái", "Tổng tiền"]}
+                  rows={rpts.map(r => {
+                    const v = data.vehicles.find(v => v.id === r.vehicleId);
+                    return [
+                      `#${r.id.slice(-4).toUpperCase()}`, v?.licensePlate || "-", r.symptoms,
+                      <StatusBadge status={r.status} />,
+                      <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(r.totalAmount)}</span>
+                    ];
+                  })}
+                  emptyMsg="Không có công việc trong ngày này"
+                />
+              </>
+            );
+          })()}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== ACCOUNTING PAGE =====================
+function AccountingPage({ data }) {
+  const [period, setPeriod] = useState("month");
+  const now = new Date();
+  const filterByPeriod = (r) => {
+    const d = new Date(r.receiveDate || r.date);
+    if (period === "today") return (r.receiveDate || r.date) === today();
+    if (period === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (period === "year") return d.getFullYear() === now.getFullYear();
+    return true;
+  };
+
+  const orders = data.repairOrders.filter(filterByPeriod);
+  const completed = orders.filter(r => r.status === "Hoàn thành" || r.status === "Đã xuất xưởng");
+  const revenue = completed.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+  const labor = completed.reduce((s, r) => s + (Number(r.totalLabor) || 0), 0);
+  const partsRev = completed.reduce((s, r) => s + (Number(r.totalParts) || 0), 0);
+  const partsCost = completed.reduce((s, r) => {
+    const pts = r.parts || [];
+    return s + pts.reduce((ps, pt) => {
+      const p = data.parts.find(p => p.id === pt.partId);
+      return ps + (p ? p.costPrice * pt.qty : 0);
+    }, 0);
+  }, 0);
+  const discount = completed.reduce((s, r) => s + (Number(r.discount) || 0), 0);
+  const paid = completed.reduce((s, r) => s + (Number(r.paid) || 0), 0);
+  const debt = completed.reduce((s, r) => s + (Number(r.totalAmount) - Number(r.paid)), 0);
+  const stockValue = data.parts.reduce((s, p) => s + p.costPrice * p.stock, 0);
+
+  // Operating costs from salary records + operating expenses
+  const salaryRecordsInPeriod = (data.salaryRecords || []).filter(sr => {
+    if (period === "all") return true;
+    const d = new Date(sr.month + "-01");
+    if (period === "today") return false;
+    if (period === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (period === "year") return d.getFullYear() === now.getFullYear();
+    return true;
+  });
+  const totalSalaryPaid = salaryRecordsInPeriod.reduce((s, sr) => s + (Number(sr.netSalary) || 0), 0);
+  const totalBHXHCompany = salaryRecordsInPeriod.reduce((s, sr) => s + (Number(sr.bhxhCompany) || 0) + (Number(sr.bhytCompany) || 0) + (Number(sr.bhtnCompany) || 0), 0);
+  const opExpenses = (data.operatingExpenses || []).filter(filterByPeriod);
+  const totalOpExp = opExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalCosts = partsCost + totalSalaryPaid + totalBHXHCompany + totalOpExp;
+  const netProfit = revenue - totalCosts;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ fontWeight: 700, color: "#1a237e" }}>Kỳ báo cáo:</div>
+          {[["today", "Hôm nay"], ["month", "Tháng này"], ["year", "Năm nay"], ["all", "Tất cả"]].map(([v, l]) => (
+            <button key={v} onClick={() => setPeriod(v)}
+              style={{ padding: "6px 16px", border: `2px solid ${period === v ? "#1a237e" : "#ddd"}`, borderRadius: 20, background: period === v ? "#1a237e" : "#fff", color: period === v ? "#fff" : "#666", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <StatCard label="Tổng doanh thu" value={formatCurrency(revenue)} icon="💰" color="#2e7d32" sub={`${completed.length} lệnh hoàn thành`} />
+        <StatCard label="Lợi nhuận ròng" value={formatCurrency(netProfit)} icon="📈" color={netProfit >= 0 ? "#1a237e" : "#c62828"} sub="Sau tất cả chi phí" />
+        <StatCard label="Đã thu" value={formatCurrency(paid)} icon="✅" color="#1565c0" />
+        <StatCard label="Công nợ còn lại" value={formatCurrency(Math.max(0, debt))} icon="⚠️" color={debt > 0 ? "#c62828" : "#2e7d32"} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Card>
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>📊 Báo cáo lãi lỗ (P&L)</div>
+          {[
+            { label: "Doanh thu sửa chữa", val: revenue, color: "#2e7d32", indent: 0 },
+            { label: "  — Tiền công lao động", val: labor, color: "#1565c0", indent: 1 },
+            { label: "  — Doanh thu vật tư", val: partsRev, color: "#1565c0", indent: 1 },
+            { label: "  — Chiết khấu", val: -discount, color: "#f57c00", indent: 1 },
+            { label: "Giá vốn vật tư", val: -partsCost, color: "#c62828", indent: 0 },
+            { label: "Chi phí lương nhân viên", val: -totalSalaryPaid, color: "#c62828", indent: 0 },
+            { label: "BHXH công ty đóng", val: -totalBHXHCompany, color: "#c62828", indent: 0 },
+            { label: "Chi phí vận hành khác", val: -totalOpExp, color: "#c62828", indent: 0 },
+            { label: "LỢI NHUẬN RÒNG", val: netProfit, color: netProfit >= 0 ? "#1a237e" : "#c62828", indent: 0, bold: true },
+          ].map((item, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < 8 ? "1px solid #f5f5f5" : "2px solid #1a237e", paddingLeft: item.indent ? 16 : 0 }}>
+              <span style={{ fontSize: item.bold ? 14 : 13, color: item.indent ? "#777" : "#333", fontWeight: item.bold ? 800 : 500 }}>{item.label}</span>
+              <span style={{ fontWeight: item.bold ? 800 : 700, color: item.color, fontSize: item.bold ? 16 : 14 }}>{formatCurrency(item.val)}</span>
+            </div>
+          ))}
+        </Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Card>
+            <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>👥 Chi phí nhân sự trong kỳ</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { label: "Lương net đã chi", val: totalSalaryPaid, color: "#c62828", bg: "#ffebee" },
+                { label: "BHXH/BHYT/BHTN (công ty)", val: totalBHXHCompany, color: "#c62828", bg: "#ffebee" },
+                { label: "Tổng chi nhân sự", val: totalSalaryPaid + totalBHXHCompany, color: "#7b1fa2", bg: "#f3e5f5", bold: true },
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 12px", background: item.bg, borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: item.bold ? 700 : 500 }}>{item.label}</span>
+                  <span style={{ fontWeight: 800, color: item.color }}>{formatCurrency(item.val)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>🏭 Kho hàng & Chi phí khác</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { label: "Giá trị tồn kho", val: stockValue, color: "#2e7d32", bg: "#e8f5e9" },
+                { label: "Chi phí vận hành khác", val: totalOpExp, color: "#f57c00", bg: "#fff3e0" },
+                { label: "SKU vật tư sắp hết", val: `${data.parts.filter(p => p.stock <= p.minStock).length} mặt hàng`, color: "#c62828", bg: "#ffebee", isText: true },
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 12px", background: item.bg, borderRadius: 8 }}>
+                  <span style={{ fontSize: 13 }}>{item.label}</span>
+                  <span style={{ fontWeight: 800, color: item.color }}>{item.isText ? item.val : formatCurrency(item.val)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <Card>
+        <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>🧾 Lệnh sửa chữa trong kỳ</div>
+        <Table
+          headers={["Mã LSC", "Ngày", "Xe", "Khách hàng", "Tiền công", "Tiền VT", "CK", "Tổng", "Đã thu", "Trạng thái"]}
+          rows={orders.slice(0, 20).map(r => {
+            const v = data.vehicles.find(v => v.id === r.vehicleId);
+            const c = data.customers.find(c => c.id === r.customerId);
+            return [
+              `#${r.id.slice(-4).toUpperCase()}`, formatDate(r.receiveDate),
+              v?.licensePlate || "-", c?.name || "-",
+              formatCurrency(r.totalLabor), formatCurrency(r.totalParts),
+              formatCurrency(r.discount), <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(r.totalAmount)}</span>,
+              formatCurrency(r.paid), <StatusBadge status={r.status} />
+            ];
+          })}
+          emptyMsg="Không có dữ liệu trong kỳ"
+        />
+      </Card>
+    </div>
+  );
+}
+
+// ===================== EXPENSES PAGE =====================
+// BHXH rates Vietnam 2026: Employee: BHXH 8%, BHYT 1.5%, BHTN 1% = 10.5%
+//                          Company:  BHXH 17.5%, BHYT 3%, BHTN 1% = 21.5%
+const BHXH_EMP = { bhxh: 8, bhyt: 1.5, bhtn: 1 };
+const BHXH_CO  = { bhxh: 17.5, bhyt: 3, bhtn: 1 };
+const calcSalary = (staff, bonus = 0, deduct = 0, workDays = 26) => {
+  const base = Number(staff.basicSalary) || 0;
+  const allowance = Number(staff.allowance) || 0;
+  const grossBase = base * (workDays / 26); // pro-rate by days
+  const bhxhEmp = grossBase * (BHXH_EMP.bhxh + BHXH_EMP.bhyt + BHXH_EMP.bhtn) / 100;
+  const bhxhCo  = grossBase * (BHXH_CO.bhxh + BHXH_CO.bhyt + BHXH_CO.bhtn) / 100;
+  const bhytCo  = 0; // already in bhxhCo combined
+  const bhtnCo  = 0;
+  const gross = grossBase + allowance + Number(bonus);
+  const net = gross - bhxhEmp - Number(deduct);
+  const bhxhCoAmt = grossBase * BHXH_CO.bhxh / 100;
+  const bhytCoAmt = grossBase * BHXH_CO.bhyt / 100;
+  const bhtnCoAmt = grossBase * BHXH_CO.bhtn / 100;
+  const bhxhEmpAmt = grossBase * BHXH_EMP.bhxh / 100;
+  const bhytEmpAmt = grossBase * BHXH_EMP.bhyt / 100;
+  const bhtnEmpAmt = grossBase * BHXH_EMP.bhtn / 100;
+  return { grossBase, allowance, bonus: Number(bonus), deduct: Number(deduct), gross, bhxhEmpAmt, bhytEmpAmt, bhtnEmpAmt, bhxhEmp, net, bhxhCoAmt, bhytCoAmt, bhtnCoAmt, bhxhCo: bhxhCoAmt + bhytCoAmt + bhtnCoAmt };
+};
+
+const EMPTY_STAFF = { id: null, name: "", phone: "", idCard: "", position: "", department: "Kỹ thuật", startDate: "", basicSalary: 0, allowance: 0, status: "active" };
+const EXPENSE_CATS = ["Mặt bằng", "Điện nước", "Internet/Điện thoại", "Văn phòng phẩm", "Công cụ dụng cụ", "Marketing/Quảng cáo", "Bảo trì thiết bị", "Vận chuyển", "Thuế phí", "Chi phí khác"];
+
+function ExpensesPage({ data, update, showToast }) {
+  const [tab, setTab] = useState("staff");
+  const [modal, setModal] = useState(null);
+  const [staffForm, setStaffForm] = useState(EMPTY_STAFF);
+  const [salaryMonth, setSalaryMonth] = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+  });
+  const [salaryData, setSalaryData] = useState({});
+  const [expForm, setExpForm] = useState({ id: null, date: today(), category: "", description: "", amount: 0, paymentMethod: "Tiền mặt", notes: "" });
+  const [expSearch, setExpSearch] = useState("");
+
+  // Init salary overrides for current month
+  const initSalaryOverrides = (month) => {
+    const existing = {};
+    (data.salaryRecords || []).filter(s => s.month === month).forEach(s => { existing[s.staffId] = s; });
+    return existing;
+  };
+
+  const handleOpenSalary = () => {
+    setSalaryData(initSalaryOverrides(salaryMonth));
+    setModal("salary");
+  };
+
+  const getSalaryRow = (staff) => {
+    const override = salaryData[staff.id] || {};
+    const bonus = override.bonus || 0;
+    const deduct = override.deduct || 0;
+    const workDays = override.workDays || 26;
+    return { ...calcSalary(staff, bonus, deduct, workDays), bonus, deduct, workDays };
+  };
+
+  const saveSalaryRecords = () => {
+    const records = (data.staffs || []).map(staff => {
+      const override = salaryData[staff.id] || {};
+      const bonus = Number(override.bonus || 0);
+      const deduct = Number(override.deduct || 0);
+      const workDays = Number(override.workDays || 26);
+      const calc = calcSalary(staff, bonus, deduct, workDays);
+      return {
+        id: `sr-${salaryMonth}-${staff.id}`,
+        month: salaryMonth, staffId: staff.id, staffName: staff.name,
+        position: staff.position, basicSalary: staff.basicSalary,
+        allowance: staff.allowance, bonus, deduct, workDays,
+        grossBase: calc.grossBase, gross: calc.gross,
+        bhxhEmpAmt: calc.bhxhEmpAmt, bhytEmpAmt: calc.bhytEmpAmt, bhtnEmpAmt: calc.bhtnEmpAmt,
+        bhxhEmp: calc.bhxhEmp, netSalary: calc.net,
+        bhxhCompany: calc.bhxhCoAmt, bhytCompany: calc.bhytCoAmt, bhtnCompany: calc.bhtnCoAmt, bhxhCo: calc.bhxhCo,
+        totalCostToCompany: calc.gross + calc.bhxhCo, status: "Đã duyệt"
+      };
+    });
+    // Remove old records for this month and add new ones
+    const others = (data.salaryRecords || []).filter(s => s.month !== salaryMonth);
+    update("salaryRecords", [...others, ...records]);
+    showToast(`Đã lưu bảng lương tháng ${salaryMonth}`);
+    setModal(null);
+  };
+
+  // Staff CRUD
+  const saveStaff = () => {
+    if (!staffForm.name) return showToast("Nhập tên nhân viên", "error");
+    const exists = (data.staffs || []).find(s => s.id === staffForm.id);
+    const updated = exists ? (data.staffs || []).map(s => s.id === staffForm.id ? staffForm : s) : [...(data.staffs || []), { ...staffForm, id: generateId() }];
+    update("staffs", updated);
+    showToast(exists ? "Đã cập nhật nhân viên" : "Đã thêm nhân viên");
+    setModal(null);
+  };
+  const delStaff = (id) => {
+    if (!adminConfirm("xóa")) return;
+    if (!window.confirm("Xóa nhân viên này?")) return;
+    update("staffs", (data.staffs || []).filter(s => s.id !== id));
+    showToast("Đã xóa");
+  };
+
+  // Expense CRUD
+  const saveExp = () => {
+    if (!expForm.category || !expForm.amount) return showToast("Nhập danh mục và số tiền", "error");
+    const id = expForm.id || generateId();
+    const saved = { ...expForm, id };
+    const exists = (data.operatingExpenses || []).find(e => e.id === expForm.id);
+    const updated = exists ? (data.operatingExpenses || []).map(e => e.id === expForm.id ? saved : e) : [...(data.operatingExpenses || []), saved];
+    update("operatingExpenses", updated);
+    showToast(exists ? "Đã cập nhật chi phí" : "Đã thêm chi phí");
+    setModal(null);
+  };
+  const delExp = (id) => {
+    if (!adminConfirm("xóa")) return;
+    if (!window.confirm("Xóa khoản chi này?")) return;
+    update("operatingExpenses", (data.operatingExpenses || []).filter(e => e.id !== id));
+    showToast("Đã xóa");
+  };
+
+  const filteredExp = (data.operatingExpenses || []).filter(e =>
+    e.description?.toLowerCase().includes(expSearch.toLowerCase()) || e.category?.toLowerCase().includes(expSearch.toLowerCase())
+  ).sort((a, b) => b.date?.localeCompare(a.date));
+
+  const totalExp = filteredExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  // Summary stats
+  const totalStaffActive = (data.staffs || []).filter(s => s.status === "active").length;
+  const latestSalary = (data.salaryRecords || []).filter(s => {
+    const n = new Date(); return s.month === `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+  });
+  const totalNetSalary = latestSalary.reduce((s, r) => s + (Number(r.netSalary) || 0), 0);
+  const totalBHXHCo = latestSalary.reduce((s, r) => s + (Number(r.bhxhCo) || 0), 0);
+  const totalOpExpAll = (data.operatingExpenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+  const tabs = [
+    { id: "staff", label: "👥 Nhân sự" },
+    { id: "salary", label: "💵 Bảng lương & BHXH" },
+    { id: "opexp", label: "🏢 Chi phí vận hành" },
+    { id: "summary", label: "📊 Tổng hợp chi phí" },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 0, background: "#fff", borderRadius: 10, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ flex: 1, padding: "12px", border: "none", background: tab === t.id ? "#1a237e" : "transparent", color: tab === t.id ? "#fff" : "#666", fontWeight: tab === t.id ? 700 : 400, cursor: "pointer", fontSize: 13, transition: "all .15s" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ---- NHÂN SỰ TAB ---- */}
+      {tab === "staff" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+            <StatCard label="Tổng nhân viên" value={`${totalStaffActive} người`} icon="👥" color="#1a237e" sub="Đang làm việc" />
+            <StatCard label="Lương net tháng này" value={formatCurrency(totalNetSalary)} icon="💵" color="#2e7d32" sub={latestSalary.length > 0 ? "Đã có bảng lương" : "Chưa lập bảng lương"} />
+            <StatCard label="BHXH công ty tháng này" value={formatCurrency(totalBHXHCo)} icon="🛡️" color="#7b1fa2" />
+          </div>
+          <Card>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, color: "#1a237e" }}>Danh sách nhân viên</div>
+              <Btn onClick={() => { setStaffForm({ ...EMPTY_STAFF, id: generateId() }); setModal("staff"); }}>➕ Thêm nhân viên</Btn>
+            </div>
+            <Table
+              headers={["Họ tên", "Chức vụ", "Phòng ban", "SĐT", "CCCD", "Ngày vào", "Lương cơ bản", "Phụ cấp", "Trạng thái", "Thao tác"]}
+              rows={(data.staffs || []).map(s => [
+                <span style={{ fontWeight: 700, color: "#1a237e" }}>{s.name}</span>,
+                s.position, s.department, s.phone, s.idCard,
+                formatDate(s.startDate),
+                <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(s.basicSalary)}</span>,
+                formatCurrency(s.allowance),
+                <Badge label={s.status === "active" ? "Đang làm" : "Đã nghỉ"} color={s.status === "active" ? "#2e7d32" : "#999"} />,
+                <div style={{ display: "flex", gap: 4 }}>
+                  <Btn size="sm" onClick={() => { setStaffForm({ ...s }); setModal("staff"); }} outline>✏️</Btn>
+                  <Btn size="sm" onClick={() => delStaff(s.id)} color="#c62828" outline>🗑️</Btn>
+                </div>
+              ])}
+              emptyMsg="Chưa có nhân viên nào"
+            />
+          </Card>
+        </>
+      )}
+
+      {/* ---- BẢNG LƯƠNG TAB ---- */}
+      {tab === "salary" && (
+        <>
+          <Card>
+            <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 700, color: "#1a237e" }}>Tháng:</div>
+                <input type="month" value={salaryMonth} onChange={e => setSalaryMonth(e.target.value)}
+                  style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 14, fontWeight: 700 }} />
+              </div>
+              <Btn onClick={handleOpenSalary}>📋 Lập bảng lương tháng {salaryMonth}</Btn>
+            </div>
+          </Card>
+
+          {/* Salary history */}
+          {(data.salaryRecords || []).filter(s => s.month === salaryMonth).length > 0 ? (
+            <Card>
+              <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>💵 Bảng lương tháng {salaryMonth}</div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "#e8eaf6" }}>
+                      {["Nhân viên","Chức vụ","Ngày công","Lương CB","Phụ cấp","Thưởng","Lương gross","BHXH NV (8%)","BHYT NV (1.5%)","BHTN NV (1%)","Khấu trừ","LƯƠNG NET","BHXH CT (17.5%)","BHYT CT (3%)","BHTN CT (1%)","Tổng chi CT"].map((h,i) => (
+                        <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 700, color: "#1a237e", whiteSpace: "nowrap", borderBottom: "2px solid #c5cae9", fontSize: 11 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.salaryRecords || []).filter(s => s.month === salaryMonth).map((s, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <td style={{ padding: "8px 10px", fontWeight: 700 }}>{s.staffName}</td>
+                        <td style={{ padding: "8px 10px", color: "#666" }}>{s.position}</td>
+                        <td style={{ padding: "8px 10px", textAlign: "center" }}>{s.workDays}</td>
+                        <td style={{ padding: "8px 10px" }}>{formatCurrency(s.basicSalary)}</td>
+                        <td style={{ padding: "8px 10px" }}>{formatCurrency(s.allowance)}</td>
+                        <td style={{ padding: "8px 10px", color: "#2e7d32" }}>{formatCurrency(s.bonus)}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 700 }}>{formatCurrency(s.gross)}</td>
+                        <td style={{ padding: "8px 10px", color: "#c62828" }}>{formatCurrency(s.bhxhEmpAmt)}</td>
+                        <td style={{ padding: "8px 10px", color: "#c62828" }}>{formatCurrency(s.bhytEmpAmt)}</td>
+                        <td style={{ padding: "8px 10px", color: "#c62828" }}>{formatCurrency(s.bhtnEmpAmt)}</td>
+                        <td style={{ padding: "8px 10px", color: "#c62828" }}>{formatCurrency(s.deduct)}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 800, color: "#2e7d32", fontSize: 13 }}>{formatCurrency(s.netSalary)}</td>
+                        <td style={{ padding: "8px 10px", color: "#7b1fa2" }}>{formatCurrency(s.bhxhCompany)}</td>
+                        <td style={{ padding: "8px 10px", color: "#7b1fa2" }}>{formatCurrency(s.bhytCompany)}</td>
+                        <td style={{ padding: "8px 10px", color: "#7b1fa2" }}>{formatCurrency(s.bhtnCompany)}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 800, color: "#7b1fa2" }}>{formatCurrency(s.totalCostToCompany)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: "#e8eaf6", fontWeight: 800 }}>
+                      <td colSpan={6} style={{ padding: "10px", color: "#1a237e", fontWeight: 800 }}>TỔNG CỘNG</td>
+                      <td style={{ padding: "10px", color: "#1a237e" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.gross)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#c62828" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhxhEmpAmt)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#c62828" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhytEmpAmt)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#c62828" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhtnEmpAmt)||0),0))}</td>
+                      <td style={{ padding: "10px" }}></td>
+                      <td style={{ padding: "10px", color: "#2e7d32", fontWeight: 800, fontSize: 14 }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.netSalary)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#7b1fa2" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhxhCompany)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#7b1fa2" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhytCompany)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#7b1fa2" }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.bhtnCompany)||0),0))}</td>
+                      <td style={{ padding: "10px", color: "#7b1fa2", fontSize: 14 }}>{formatCurrency((data.salaryRecords||[]).filter(s=>s.month===salaryMonth).reduce((s,r)=>s+(Number(r.totalCostToCompany)||0),0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div style={{ marginTop: 14, padding: "12px 16px", background: "#f3e5f5", borderRadius: 8, fontSize: 12, color: "#7b1fa2" }}>
+                <strong>Ghi chú tỷ lệ BHXH 2026:</strong> Người lao động đóng: BHXH 8% + BHYT 1.5% + BHTN 1% = 10.5% lương cơ sở. Công ty đóng: BHXH 17.5% + BHYT 3% + BHTN 1% = 21.5% lương cơ sở.
+              </div>
+            </Card>
+          ) : (
+            <Card>
+              <div style={{ textAlign: "center", padding: 32, color: "#aaa" }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>Chưa có bảng lương tháng {salaryMonth}</div>
+                <div style={{ fontSize: 13, marginTop: 6 }}>Nhấn "Lập bảng lương" để tạo bảng lương và tính BHXH tự động</div>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ---- CHI PHÍ VẬN HÀNH TAB ---- */}
+      {tab === "opexp" && (
+        <>
+          <Card>
+            <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <input value={expSearch} onChange={e => setExpSearch(e.target.value)} placeholder="Tìm kiếm chi phí..."
+                  style={{ padding: "7px 12px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, width: 240 }} />
+                <div style={{ fontWeight: 700, color: "#c62828" }}>Tổng: {formatCurrency(totalExp)}</div>
+              </div>
+              <Btn onClick={() => { setExpForm({ id: null, date: today(), category: "", description: "", amount: 0, paymentMethod: "Tiền mặt", notes: "" }); setModal("expense"); }}>➕ Ghi nhận chi phí</Btn>
+            </div>
+          </Card>
+          <Card>
+            <Table
+              headers={["Ngày", "Danh mục", "Mô tả", "Số tiền", "Hình thức", "Ghi chú", "Thao tác"]}
+              rows={filteredExp.map(e => [
+                formatDate(e.date),
+                <Badge label={e.category} color="#7b1fa2" />,
+                e.description,
+                <span style={{ fontWeight: 700, color: "#c62828" }}>{formatCurrency(e.amount)}</span>,
+                e.paymentMethod, e.notes || "-",
+                <div style={{ display: "flex", gap: 4 }}>
+                  <Btn size="sm" onClick={() => { setExpForm({ ...e }); setModal("expense"); }} outline>✏️</Btn>
+                  <Btn size="sm" onClick={() => delExp(e.id)} color="#c62828" outline>🗑️</Btn>
+                </div>
+              ])}
+              emptyMsg="Chưa có chi phí nào được ghi nhận"
+            />
+          </Card>
+        </>
+      )}
+
+      {/* ---- SUMMARY TAB ---- */}
+      {tab === "summary" && (() => {
+        const now2 = new Date();
+        const thisMonth = `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}`;
+        const monthSal = (data.salaryRecords || []).filter(s => s.month === thisMonth);
+        const monthNet = monthSal.reduce((s, r) => s + (Number(r.netSalary) || 0), 0);
+        const monthBHXH = monthSal.reduce((s, r) => s + (Number(r.bhxhCo) || 0), 0);
+        const monthOpExp = (data.operatingExpenses || []).filter(e => {
+          const d = new Date(e.date);
+          return d.getMonth() === now2.getMonth() && d.getFullYear() === now2.getFullYear();
+        }).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        const totalMonthCost = monthNet + monthBHXH + monthOpExp;
+        // By category
+        const byCat = {};
+        (data.operatingExpenses || []).forEach(e => { byCat[e.category] = (byCat[e.category] || 0) + Number(e.amount); });
+        return (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+              <StatCard label="Lương net tháng này" value={formatCurrency(monthNet)} icon="💵" color="#2e7d32" />
+              <StatCard label="BHXH công ty đóng" value={formatCurrency(monthBHXH)} icon="🛡️" color="#7b1fa2" />
+              <StatCard label="Chi phí vận hành" value={formatCurrency(monthOpExp)} icon="🏢" color="#f57c00" />
+              <StatCard label="Tổng chi phí tháng" value={formatCurrency(totalMonthCost)} icon="📉" color="#c62828" sub="Nhân sự + Vận hành" />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <Card>
+                <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>💵 Chi tiết lương tháng này</div>
+                {monthSal.length === 0 ? <div style={{ color: "#aaa", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa lập bảng lương tháng này</div> :
+                  monthSal.map((s, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: "1px solid #f5f5f5" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{s.staffName}</div>
+                        <div style={{ fontSize: 11, color: "#888" }}>{s.position} · {s.workDays} ngày công</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(s.netSalary)}</div>
+                        <div style={{ fontSize: 11, color: "#7b1fa2" }}>+BHXH CT: {formatCurrency(s.bhxhCo)}</div>
+                      </div>
+                    </div>
+                  ))
+                }
+                {monthSal.length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontWeight: 800, color: "#c62828" }}>
+                    <span>Tổng chi nhân sự</span>
+                    <span>{formatCurrency(monthNet + monthBHXH)}</span>
+                  </div>
+                )}
+              </Card>
+              <Card>
+                <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>🏢 Chi phí theo danh mục</div>
+                {Object.keys(byCat).length === 0 ? <div style={{ color: "#aaa", fontSize: 13, textAlign: "center", padding: 20 }}>Chưa có chi phí vận hành</div> :
+                  Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt], i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f5f5" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Badge label={cat} color="#7b1fa2" />
+                      </div>
+                      <span style={{ fontWeight: 700, color: "#c62828" }}>{formatCurrency(amt)}</span>
+                    </div>
+                  ))
+                }
+                {Object.keys(byCat).length > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", fontWeight: 800, color: "#f57c00" }}>
+                    <span>Tổng chi phí vận hành</span>
+                    <span>{formatCurrency(totalOpExpAll)}</span>
+                  </div>
+                )}
+              </Card>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ===== MODALS ===== */}
+      {modal === "staff" && (
+        <Modal title={staffForm.id && (data.staffs||[]).find(s=>s.id===staffForm.id) ? "Cập nhật nhân viên" : "Thêm nhân viên"} onClose={() => setModal(null)} width={680}>
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 10 }}>📋 Thông tin cá nhân</div>
+          <Grid cols={2} gap={12}>
+            <Input label="Họ và tên" value={staffForm.name} onChange={v => setStaffForm({ ...staffForm, name: v })} required style={{ gridColumn: "span 2" }} />
+            <Input label="Số điện thoại" value={staffForm.phone} onChange={v => setStaffForm({ ...staffForm, phone: v })} />
+            <Input label="Số CCCD/CMND" value={staffForm.idCard} onChange={v => setStaffForm({ ...staffForm, idCard: v })} />
+            <Input label="Chức vụ" value={staffForm.position} onChange={v => setStaffForm({ ...staffForm, position: v })} />
+            <Input label="Phòng ban" value={staffForm.department} onChange={v => setStaffForm({ ...staffForm, department: v })} options={["Kỹ thuật", "Văn phòng", "Kho", "Bảo vệ", "Khác"]} />
+            <Input label="Ngày vào làm" value={staffForm.startDate} onChange={v => setStaffForm({ ...staffForm, startDate: v })} type="date" />
+            <Input label="Trạng thái" value={staffForm.status} onChange={v => setStaffForm({ ...staffForm, status: v })} options={["active", "inactive"]} />
+          </Grid>
+          <div style={{ fontWeight: 700, color: "#1a237e", margin: "14px 0 10px" }}>💰 Thông tin lương & BHXH</div>
+          <Grid cols={2} gap={12}>
+            <Input label="Lương cơ bản (đ/tháng)" value={staffForm.basicSalary} onChange={v => setStaffForm({ ...staffForm, basicSalary: v })} type="number" required />
+            <Input label="Phụ cấp (đ/tháng)" value={staffForm.allowance} onChange={v => setStaffForm({ ...staffForm, allowance: v })} type="number" />
+          </Grid>
+          {staffForm.basicSalary > 0 && (() => {
+            const calc = calcSalary(staffForm);
+            return (
+              <div style={{ marginTop: 14, padding: 14, background: "#f3e5f5", borderRadius: 8 }}>
+                <div style={{ fontWeight: 700, color: "#7b1fa2", marginBottom: 8 }}>🛡️ Dự tính BHXH (tự động tính)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 13 }}>
+                  <div>NLĐ đóng BHXH (8%): <strong style={{ color: "#c62828" }}>{formatCurrency(calc.bhxhEmpAmt)}</strong></div>
+                  <div>Công ty đóng BHXH (17.5%): <strong style={{ color: "#7b1fa2" }}>{formatCurrency(calc.bhxhCoAmt)}</strong></div>
+                  <div>NLĐ đóng BHYT (1.5%): <strong style={{ color: "#c62828" }}>{formatCurrency(calc.bhytEmpAmt)}</strong></div>
+                  <div>Công ty đóng BHYT (3%): <strong style={{ color: "#7b1fa2" }}>{formatCurrency(calc.bhytCoAmt)}</strong></div>
+                  <div>NLĐ đóng BHTN (1%): <strong style={{ color: "#c62828" }}>{formatCurrency(calc.bhtnEmpAmt)}</strong></div>
+                  <div>Công ty đóng BHTN (1%): <strong style={{ color: "#7b1fa2" }}>{formatCurrency(calc.bhtnCoAmt)}</strong></div>
+                  <div style={{ gridColumn: "span 2", paddingTop: 8, borderTop: "1px solid #ce93d8", display: "flex", justifyContent: "space-between" }}>
+                    <span>Lương NET dự tính: <strong style={{ color: "#2e7d32", fontSize: 15 }}>{formatCurrency(calc.net)}</strong></span>
+                    <span>Tổng chi của công ty: <strong style={{ color: "#c62828", fontSize: 15 }}>{formatCurrency(calc.gross + calc.bhxhCo)}</strong></span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={saveStaff}>💾 Lưu nhân viên</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "salary" && (
+        <Modal title={`Lập bảng lương tháng ${salaryMonth}`} onClose={() => setModal(null)} width={900}>
+          <div style={{ marginBottom: 12, padding: "10px 14px", background: "#e3f2fd", borderRadius: 8, fontSize: 12, color: "#1565c0" }}>
+            ℹ️ Tỷ lệ BHXH 2026: NLĐ đóng 10.5% (BHXH 8% + BHYT 1.5% + BHTN 1%). Công ty đóng 21.5% (BHXH 17.5% + BHYT 3% + BHTN 1%) tính trên lương cơ bản.
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#e8eaf6" }}>
+                  {["Nhân viên","Ngày công","Thưởng (đ)","Khấu trừ (đ)","Lương CB","Lương gross","BHXH NV","Lương NET","BHXH CT","Tổng chi CT"].map((h,i) => (
+                    <th key={i} style={{ padding: "8px 10px", fontWeight: 700, color: "#1a237e", whiteSpace: "nowrap", textAlign: "left", borderBottom: "2px solid #c5cae9" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(data.staffs || []).filter(s => s.status === "active").map((staff, i) => {
+                  const override = salaryData[staff.id] || {};
+                  const bonus = Number(override.bonus || 0);
+                  const deduct = Number(override.deduct || 0);
+                  const workDays = Number(override.workDays || 26);
+                  const calc = calcSalary(staff, bonus, deduct, workDays);
+                  return (
+                    <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 700 }}>{staff.name}<div style={{ fontSize: 10, color: "#888" }}>{staff.position}</div></td>
+                      <td style={{ padding: "6px 8px" }}>
+                        <input type="number" min={0} max={31} value={workDays}
+                          onChange={e => setSalaryData(d => ({ ...d, [staff.id]: { ...d[staff.id], workDays: e.target.value } }))}
+                          style={{ width: 55, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} />
+                      </td>
+                      <td style={{ padding: "6px 8px" }}>
+                        <input type="number" min={0} value={bonus}
+                          onChange={e => setSalaryData(d => ({ ...d, [staff.id]: { ...d[staff.id], bonus: e.target.value } }))}
+                          style={{ width: 90, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} />
+                      </td>
+                      <td style={{ padding: "6px 8px" }}>
+                        <input type="number" min={0} value={deduct}
+                          onChange={e => setSalaryData(d => ({ ...d, [staff.id]: { ...d[staff.id], deduct: e.target.value } }))}
+                          style={{ width: 80, padding: "4px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }} />
+                      </td>
+                      <td style={{ padding: "8px 10px" }}>{formatCurrency(staff.basicSalary)}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700 }}>{formatCurrency(calc.gross)}</td>
+                      <td style={{ padding: "8px 10px", color: "#c62828" }}>{formatCurrency(calc.bhxhEmp)}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 800, color: "#2e7d32", fontSize: 13 }}>{formatCurrency(calc.net)}</td>
+                      <td style={{ padding: "8px 10px", color: "#7b1fa2" }}>{formatCurrency(calc.bhxhCo)}</td>
+                      <td style={{ padding: "8px 10px", fontWeight: 800, color: "#c62828" }}>{formatCurrency(calc.gross + calc.bhxhCo)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: "#e8eaf6", fontWeight: 800 }}>
+                  <td colSpan={5} style={{ padding: "10px", color: "#1a237e" }}>TỔNG CỘNG</td>
+                  <td style={{ padding: "10px" }}>{formatCurrency((data.staffs||[]).filter(s=>s.status==="active").reduce((s,st)=>{ const c=calcSalary(st,Number((salaryData[st.id]||{}).bonus||0),Number((salaryData[st.id]||{}).deduct||0),Number((salaryData[st.id]||{}).workDays||26)); return s+c.gross; },0))}</td>
+                  <td style={{ padding: "10px", color: "#c62828" }}>{formatCurrency((data.staffs||[]).filter(s=>s.status==="active").reduce((s,st)=>{ const c=calcSalary(st,Number((salaryData[st.id]||{}).bonus||0),Number((salaryData[st.id]||{}).deduct||0),Number((salaryData[st.id]||{}).workDays||26)); return s+c.bhxhEmp; },0))}</td>
+                  <td style={{ padding: "10px", color: "#2e7d32", fontSize: 14 }}>{formatCurrency((data.staffs||[]).filter(s=>s.status==="active").reduce((s,st)=>{ const c=calcSalary(st,Number((salaryData[st.id]||{}).bonus||0),Number((salaryData[st.id]||{}).deduct||0),Number((salaryData[st.id]||{}).workDays||26)); return s+c.net; },0))}</td>
+                  <td style={{ padding: "10px", color: "#7b1fa2" }}>{formatCurrency((data.staffs||[]).filter(s=>s.status==="active").reduce((s,st)=>{ const c=calcSalary(st,Number((salaryData[st.id]||{}).bonus||0),Number((salaryData[st.id]||{}).deduct||0),Number((salaryData[st.id]||{}).workDays||26)); return s+c.bhxhCo; },0))}</td>
+                  <td style={{ padding: "10px", color: "#c62828", fontSize: 14 }}>{formatCurrency((data.staffs||[]).filter(s=>s.status==="active").reduce((s,st)=>{ const c=calcSalary(st,Number((salaryData[st.id]||{}).bonus||0),Number((salaryData[st.id]||{}).deduct||0),Number((salaryData[st.id]||{}).workDays||26)); return s+c.gross+c.bhxhCo; },0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={saveSalaryRecords}>💾 Xác nhận & Lưu bảng lương</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "expense" && (
+        <Modal title={expForm.id ? "Cập nhật chi phí" : "Ghi nhận chi phí vận hành"} onClose={() => setModal(null)} width={520}>
+          <Grid cols={2} gap={12}>
+            <Input label="Ngày" value={expForm.date} onChange={v => setExpForm({ ...expForm, date: v })} type="date" />
+            <Input label="Danh mục" value={expForm.category} onChange={v => setExpForm({ ...expForm, category: v })} options={EXPENSE_CATS} required />
+            <Input label="Mô tả chi phí" value={expForm.description} onChange={v => setExpForm({ ...expForm, description: v })} style={{ gridColumn: "span 2" }} required />
+            <Input label="Số tiền (đ)" value={expForm.amount} onChange={v => setExpForm({ ...expForm, amount: v })} type="number" required />
+            <Input label="Hình thức thanh toán" value={expForm.paymentMethod} onChange={v => setExpForm({ ...expForm, paymentMethod: v })} options={["Tiền mặt", "Chuyển khoản", "Thẻ", "Khác"]} />
+            <Input label="Ghi chú" value={expForm.notes} onChange={v => setExpForm({ ...expForm, notes: v })} style={{ gridColumn: "span 2" }} />
+          </Grid>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
+            <Btn onClick={saveExp}>💾 Lưu chi phí</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ===================== REPORTS PAGE =====================
+function ReportsPage({ data }) {
+  const revenue = data.repairOrders
+    .filter(r => r.status === "Hoàn thành" || r.status === "Đã xuất xưởng")
+    .reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+
+  const byStatus = {};
+  data.repairOrders.forEach(r => { byStatus[r.status] = (byStatus[r.status] || 0) + 1; });
+
+  const byTech = data.technicians.map(t => ({
+    name: t.name,
+    count: data.repairOrders.filter(r => r.technicianId === t.id).length,
+    done: data.repairOrders.filter(r => r.technicianId === t.id && (r.status === "Hoàn thành" || r.status === "Đã xuất xưởng")).length,
+    rev: data.repairOrders.filter(r => r.technicianId === t.id && (r.status === "Hoàn thành" || r.status === "Đã xuất xưởng")).reduce((s, r) => s + (Number(r.totalAmount) || 0), 0)
+  }));
+
+  const waiting = data.repairOrders.filter(r => r.status !== "Đã xuất xưởng" && r.status !== "Hoàn thành" && r.status !== "Huỷ");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <StatCard label="Tổng lệnh SC" value={data.repairOrders.length} icon="🔧" color="#1a237e" />
+        <StatCard label="Xe trong kho" value={waiting.length} icon="🚗" color="#f57c00" sub="Đang sửa / chờ" />
+        <StatCard label="Tổng khách hàng" value={data.customers.length} icon="👤" color="#2e7d32" />
+        <StatCard label="Tổng doanh thu" value={formatCurrency(revenue)} icon="💰" color="#1565c0" />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Card>
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12 }}>📊 Lệnh SC theo trạng thái</div>
+          {Object.entries(byStatus).map(([s, n]) => (
+            <div key={s} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f5f5f5" }}>
+              <StatusBadge status={s} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 120, height: 8, background: "#eee", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ width: `${(n / data.repairOrders.length * 100)}%`, height: "100%", background: "#1a237e", borderRadius: 4 }} />
+                </div>
+                <span style={{ fontWeight: 700 }}>{n}</span>
+              </div>
+            </div>
+          ))}
+        </Card>
+
+        <Card>
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12 }}>👨‍🔧 Hiệu suất kỹ thuật viên</div>
+          <Table
+            headers={["KTV", "Tổng lệnh", "Hoàn thành", "Doanh thu"]}
+            rows={byTech.map(t => [
+              <span style={{ fontWeight: 700 }}>{t.name}</span>,
+              t.count, t.done,
+              <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(t.rev)}</span>
+            ])}
+            emptyMsg="Chưa có dữ liệu"
+          />
+        </Card>
+      </div>
+
+      <Card>
+        <div style={{ fontWeight: 700, color: "#f57c00", marginBottom: 12, fontSize: 15 }}>🚗 Xe tồn trong garage</div>
+        <Table
+          headers={["Biển số", "Tên xe", "Khách hàng", "Ngày tiếp nhận", "Triệu chứng", "KTV phụ trách", "Trạng thái"]}
+          rows={waiting.map(r => {
+            const v = data.vehicles.find(v => v.id === r.vehicleId);
+            const c = data.customers.find(c => c.id === r.customerId);
+            const t = data.technicians.find(t => t.id === r.technicianId);
+            const days = Math.ceil((new Date() - new Date(r.receiveDate)) / 86400000);
+            return [
+              <span style={{ fontWeight: 700, color: "#1a237e" }}>{v?.licensePlate || "-"}</span>,
+              v?.vehicleName || "-", c?.name || "-",
+              <span>{formatDate(r.receiveDate)} <span style={{ color: days > 3 ? "#c62828" : "#2e7d32", fontSize: 11 }}>({days} ngày)</span></span>,
+              r.symptoms.slice(0, 40), t?.name || "-",
+              <StatusBadge status={r.status} />
+            ];
+          })}
+          emptyMsg="Không có xe nào đang trong garage ✅"
+        />
+      </Card>
+
+      <Card>
+        <div style={{ fontWeight: 700, color: "#2e7d32", marginBottom: 12, fontSize: 15 }}>🚪 Xe đã xuất xưởng</div>
+        <Table
+          headers={["Biển số", "Tên xe", "Khách hàng", "Ngày xuất", "Tổng thanh toán", "Đã thu"]}
+          rows={data.repairOrders.filter(r => r.status === "Đã xuất xưởng").map(r => {
+            const v = data.vehicles.find(v => v.id === r.vehicleId);
+            const c = data.customers.find(c => c.id === r.customerId);
+            return [
+              <span style={{ fontWeight: 700 }}>{v?.licensePlate || "-"}</span>,
+              v?.vehicleName || "-", c?.name || "-",
+              formatDate(r.actualDone || r.receiveDate),
+              <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(r.totalAmount)}</span>,
+              formatCurrency(r.paid)
+            ];
+          })}
+          emptyMsg="Chưa có xe xuất xưởng"
+        />
+      </Card>
+    </div>
+  );
+}
+
+// ===================== ALERTS PAGE =====================
+function AlertsPage({ data, alerts, setPage }) {
+  const allVehicles = data.vehicles.map(v => {
+    const cust = data.customers.find(c => c.id === v.customerId);
+    const regDays = daysUntil(v.registrationExpiry);
+    const insDays = daysUntil(v.insuranceExpiry);
+    const maintKm = v.nextMaintenanceKm ? (Number(v.nextMaintenanceKm) - Number(v.currentKm)) : null;
+    return { ...v, cust, regDays, insDays, maintKm };
+  }).sort((a, b) => (a.regDays || 999) - (b.regDays || 999));
+
+  const alertColor = (days) => {
+    if (days === null) return "#aaa";
+    if (days < 0) return "#c62828";
+    if (days <= 15) return "#c62828";
+    if (days <= 30) return "#f57c00";
+    return "#2e7d32";
+  };
+  const alertText = (days, label) => {
+    if (days === null) return `Chưa nhập ${label}`;
+    if (days < 0) return `Đã hết hạn ${Math.abs(days)} ngày`;
+    if (days === 0) return `Hết hạn HÔM NAY ⚠️`;
+    return `Còn ${days} ngày`;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <StatCard label="Đăng kiểm đã hết hạn" value={allVehicles.filter(v => v.regDays !== null && v.regDays < 0).length} icon="❌" color="#c62828" />
+        <StatCard label="Đăng kiểm trong 30 ngày" value={allVehicles.filter(v => v.regDays !== null && v.regDays >= 0 && v.regDays <= 30).length} icon="⚠️" color="#f57c00" />
+        <StatCard label="Bảo hiểm đã hết hạn" value={allVehicles.filter(v => v.insDays !== null && v.insDays < 0).length} icon="❌" color="#c62828" />
+      </div>
+
+      <Card>
+        <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 12, fontSize: 15 }}>🔔 Trạng thái hạn xe toàn hệ thống</div>
+        <Table
+          headers={["Biển số", "Tên xe", "Khách hàng", "SĐT", "Đăng kiểm", "Bảo hiểm", "Km bảo dưỡng còn lại"]}
+          rows={allVehicles.map(v => [
+            <span style={{ fontWeight: 800, color: "#1a237e" }}>{v.licensePlate}</span>,
+            v.vehicleName,
+            v.cust?.name || "-",
+            v.cust?.phone || "-",
+            <div>
+              <div style={{ fontSize: 11, color: "#666" }}>{formatDate(v.registrationExpiry)}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: alertColor(v.regDays) }}>{alertText(v.regDays, "đăng kiểm")}</div>
+            </div>,
+            <div>
+              <div style={{ fontSize: 11, color: "#666" }}>{formatDate(v.insuranceExpiry)}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: alertColor(v.insDays) }}>{alertText(v.insDays, "bảo hiểm")}</div>
+            </div>,
+            v.maintKm !== null
+              ? <span style={{ color: v.maintKm <= 1000 ? "#c62828" : v.maintKm <= 5000 ? "#f57c00" : "#2e7d32", fontWeight: 700 }}>
+                {v.maintKm <= 0 ? "Quá hạn!" : `${Number(v.maintKm).toLocaleString()} km`}
+              </span>
+              : <span style={{ color: "#aaa" }}>Chưa thiết lập</span>
+          ])}
+          emptyMsg="Không có xe nào"
+        />
+      </Card>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<SicoAuto />);
+</script>
+</body>
+</html>
