@@ -471,7 +471,7 @@ const Icon = ({ name, size = 16 }) => {
     report: "📊", dashboard: "🏠", plus: "➕", edit: "✏️", delete: "🗑️",
     search: "🔍", bell: "🔔", save: "💾", back: "◀", print: "🖨️",
     check: "✅", x: "❌", warning: "⚠️", truck: "🚛", money: "💰",
-    calendar: "📅", technician: "👨‍🔧", exit: "🚪", warehouse: "🏭", chart: "📈"
+    calendar: "📅", technician: "👨‍🔧", settings: "⚙️", exit: "🚪", warehouse: "🏭", chart: "📈"
   };
   return <span style={{ fontSize: size }}>{icons[name] || "●"}</span>;
 };
@@ -771,7 +771,7 @@ function SicoAuto() {
     { id: "reports", label: "Báo cáo", icon: "report" },
     { id: "expenses", label: "Chi phí vận hành", icon: "money" },
     { id: "alerts", label: `Nhắc nhở ${alerts.length > 0 ? "🔴" : ""}`, icon: "bell" },
-    { id: "settings_page", label: "Cài đặt", icon: "save" },
+    { id: "settings_page", label: "⚙️ Cài đặt", icon: "settings" },
   ];
 
   const pages = {
