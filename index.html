@@ -1156,6 +1156,12 @@ function RepairPage({ data, update, showToast }) {
               <div style={{ display: "flex", gap: 4 }}>
                 <Btn size="sm" onClick={() => openView(r)} outline color="#1565c0">👁️</Btn>
                 <Btn size="sm" onClick={() => openEdit(r)} outline>✏️</Btn>
+                <Btn size="sm" onClick={() => {
+                  if (!adminConfirm("xóa lệnh sửa chữa")) return;
+                  if (!window.confirm("Xóa lệnh SC #" + r.id.slice(-4).toUpperCase() + "?")) return;
+                  update("repairOrders", data.repairOrders.filter(x => x.id !== r.id));
+                  showToast("Đã xóa lệnh sửa chữa");
+                }} outline color="#c62828">🗑️</Btn>
               </div>
             ];
           })}
