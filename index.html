@@ -143,17 +143,17 @@ const useStorage = () => {
 
 // ===================== PRINT =====================
 const doPrint = (content, title) => {
-  const full = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>" + (title||"SICO AUTO") + "</title>"
-    + "<script>setTimeout(function(){window.print();},800);<\/script>"
-    + "</head><body style='margin:0;padding:0'>" + content + "</body></html>";
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.open();
-    w.document.write(full);
-    w.document.close();
-  } else {
-    alert("Trình duyệt đang chặn popup! Vui lòng cho phép popup cho trang này:\n\nNhìn góc trên phải trình duyệt → nhấn vào icon bị chặn → chọn Luôn cho phép");
+  const printWin = window.open("about:blank", "print_" + Date.now(), "width=800,height=600,scrollbars=yes");
+  if (!printWin) {
+    alert("Popup bị chặn!\nVui lòng nhấn vào icon 🚫 góc trên phải trình duyệt → Luôn cho phép popup từ trang này → thử lại.");
+    return;
   }
+  const full = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>" + (title||"SICO AUTO - In phiếu") + "</title></head>"
+    + "<body style='margin:0;padding:0'>" + content
+    + "<script>window.onload=function(){setTimeout(function(){window.print();window.onafterprint=function(){window.close();};},500);};<\/script>"
+    + "</body></html>";
+  printWin.document.write(full);
+  printWin.document.close();
 };
 
 const fC = (n) => (Number(n)||0).toLocaleString("vi-VN") + " đ";
@@ -1289,6 +1289,385 @@ function QuotesPage({ data, update, showToast }) {
   );
 }
 
+const EMPTY_QUOTE = {
+  id: null, vehicleId: "", customerId: "", date: today(), status: "Chờ duyệt",
+  receiveKm: "", customerRequest: "", notes: "", discount: 0, vatType: "no_vat", items: []
+};
+const EMPTY_QITEM = { type: "part", partId: "", name: "", qty: 1, unit: "Cái", costPrice: 0, salePrice: 0, hours: 1, laborRate: 150000 };
+
+function QuotesPage({ data, update, showToast }) {
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_QUOTE, date: today() });
+
+  // ---------- tính tiền ----------
+  const calcItem = (it) => it.type === "labor"
+    ? { rev: Number(it.hours) * Number(it.laborRate), cost: 0 }
+    : { rev: Number(it.qty) * Number(it.salePrice), cost: Number(it.qty) * Number(it.costPrice) };
+
+  const calcQuote = (q) => {
+    const items = q.items || [];
+    const totalRev   = items.reduce((s, it) => s + calcItem(it).rev, 0);
+    const totalCost  = items.reduce((s, it) => s + calcItem(it).cost, 0);
+    const disc       = Number(q.discount) || 0;
+    const total      = totalRev - disc;
+    const grossProfit = total - totalCost;
+    return { totalRev, totalCost, disc, total, grossProfit };
+  };
+
+  const { totalRev, totalCost, disc, total, grossProfit } = calcQuote(form);
+
+  // ---------- items ----------
+  const addPartItem  = () => setForm(f => ({ ...f, items: [...f.items, { ...EMPTY_QITEM, id: generateId() }] }));
+  const addLaborItem = () => setForm(f => ({ ...f, items: [...f.items, { ...EMPTY_QITEM, id: generateId(), type: "labor", name: "Công lao động", unit: "Giờ" }] }));
+  const removeItem   = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
+  const updateItem   = (i, field, val) => setForm(f => {
+    const items = [...f.items];
+    items[i] = { ...items[i], [field]: val };
+    if (field === "partId" && val) {
+      const p = data.parts.find(p => p.id === val);
+      if (p) { items[i].name = p.name; items[i].unit = p.unit; items[i].costPrice = p.costPrice; items[i].salePrice = p.salePrice; }
+    }
+    return { ...f, items };
+  });
+
+  // ---------- vehicle auto-fill ----------
+  const handleVehicleChange = (vid) => {
+    const v = data.vehicles.find(v => v.id === vid);
+    setForm(f => ({ ...f, vehicleId: vid, customerId: v?.customerId || f.customerId, receiveKm: v?.currentKm || "" }));
+  };
+
+  // ---------- save / delete ----------
+  const save = () => {
+    if (!form.vehicleId || !form.customerId) return showToast("Chọn xe và khách hàng", "error");
+    const id = form.id || generateId();
+    const calc = calcQuote(form);
+    const saved = { ...form, id, ...calc };
+    const exists = (data.quotes || []).find(q => q.id === form.id);
+    const updated = exists
+      ? (data.quotes || []).map(q => q.id === form.id ? saved : q)
+      : [...(data.quotes || []), saved];
+    update("quotes", updated);
+    showToast("Đã lưu báo giá");
+    setModal(false);
+  };
+  const del = (id) => {
+    if (!window.confirm("Xóa báo giá này?")) return;
+    update("quotes", (data.quotes || []).filter(q => q.id !== id));
+    showToast("Đã xóa");
+  };
+  const openNew  = () => { setForm({ ...EMPTY_QUOTE, date: today() }); setModal(true); };
+  const openEdit = (q) => { setForm({ ...q }); setModal(true); };
+
+  const approvedQuotes = (data.quotes || []).filter(q => q.status === "Đã duyệt");
+  const totalApproved  = approvedQuotes.reduce((s, q) => s + (Number(q.total) || 0), 0);
+  const totalProfit    = approvedQuotes.reduce((s, q) => s + (Number(q.grossProfit) || 0), 0);
+  const selVehicle     = data.vehicles.find(v => v.id === form.vehicleId);
+  const selCustomer    = data.customers.find(c => c.id === form.customerId);
+
+  const inpStyle = (extra = {}) => ({ padding: "6px 8px", border: "1px solid #ddd", borderRadius: 5, fontSize: 13, width: "100%", ...extra });
+  const numInp   = (val, onChange, w = "100%", border = "#ddd", bg = "#fff") => (
+    <input type="number" value={val} onChange={e => onChange(e.target.value)}
+      style={{ padding: "5px 6px", border: "1px solid " + border, borderRadius: 4, fontSize: 12, width: w, background: bg, textAlign: "right" }} />
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <StatCard label="Tổng báo giá" value={(data.quotes||[]).length} icon="🧾" color="#1a237e" />
+        <StatCard label="Đã duyệt" value={approvedQuotes.length} icon="✅" color="#2e7d32" />
+        <StatCard label="Doanh thu dự kiến" value={formatCurrency(totalApproved)} icon="💰" color="#1565c0" sub="Từ báo giá đã duyệt" />
+        <StatCard label="Lãi ước tính" value={formatCurrency(totalProfit)} icon="📈" color={totalProfit >= 0 ? "#1565c0" : "#c62828"} sub="DT – Giá vốn VT" />
+      </div>
+
+      {/* Toolbar */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 700, color: "#1a237e" }}>Danh sách báo giá ({(data.quotes||[]).length})</div>
+          <Btn onClick={openNew}>➕ Tạo báo giá</Btn>
+        </div>
+      </Card>
+
+      {/* List */}
+      <Card>
+        <Table
+          headers={["Mã BG", "Ngày", "Khách hàng", "Xe / Biển số", "Nội dung", "Tổng BG", "Giá vốn VT", "Lãi ước tính", "Trạng thái", "Thao tác"]}
+          rows={(data.quotes || []).slice().reverse().map(q => {
+            const c = data.customers.find(c => c.id === q.customerId);
+            const v = data.vehicles.find(v => v.id === q.vehicleId);
+            const profit = Number(q.grossProfit) || (Number(q.total) - Number(q.totalCost));
+            return [
+              <span style={{ fontWeight: 800, color: "#1a237e" }}>#{(q.id||"").slice(-4).toUpperCase()}</span>,
+              formatDate(q.date),
+              <div><div style={{ fontWeight: 700 }}>{c?.name||"-"}</div><div style={{ fontSize: 11, color: "#888" }}>{c?.phone||""}</div></div>,
+              <div><div style={{ fontWeight: 700, color: "#1a237e" }}>{v?.licensePlate||"-"}</div><div style={{ fontSize: 11, color: "#888" }}>{v?.vehicleName||""}</div></div>,
+              <span style={{ fontSize: 11, color: "#666" }}>{(q.customerRequest||"—").slice(0, 30)}</span>,
+              <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(q.total)}</span>,
+              <span style={{ color: "#e65100" }}>{formatCurrency(q.totalCost)}</span>,
+              <span style={{ fontWeight: 700, color: profit >= 0 ? "#1565c0" : "#c62828" }}>{formatCurrency(profit)}</span>,
+              <Badge label={q.status} color={q.status==="Đã duyệt"?"#2e7d32":q.status==="Huỷ"?"#c62828":"#f57c00"} />,
+              <div style={{ display: "flex", gap: 4 }}>
+                <Btn size="sm" onClick={() => openEdit(q)} outline>✏️ Mở</Btn>
+                <Btn size="sm" onClick={() => del(q.id)} outline color="#c62828">🗑️</Btn>
+              </div>
+            ];
+          })}
+          emptyMsg="Chưa có báo giá nào"
+        />
+      </Card>
+
+      {/* ===== MODAL ===== */}
+      {modal && (
+        <Modal title={form.id ? "Báo giá #" + (form.id||"").slice(-4).toUpperCase() : "Tạo báo giá mới"} onClose={() => setModal(false)} width={1020}>
+
+          {/* HEADER INFO */}
+          <div style={{ fontWeight: 700, color: "#1a237e", marginBottom: 8, padding: "4px 10px", background: "#e8eaf6", borderLeft: "4px solid #1a237e", borderRadius: 4 }}>🚗 Thông tin xe & Khách hàng</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 130px 130px 140px", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Xe <span style={{ color: "red" }}>*</span></label>
+              <select value={form.vehicleId} onChange={e => handleVehicleChange(e.target.value)} style={{ ...inpStyle() }}>
+                <option value="">-- Chọn xe --</option>
+                {data.vehicles.map(v => <option key={v.id} value={v.id}>{v.licensePlate} – {v.vehicleName}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Khách hàng <span style={{ color: "red" }}>*</span></label>
+              <select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} style={{ ...inpStyle() }}>
+                <option value="">-- Chọn --</option>
+                {data.customers.map(c => <option key={c.id} value={c.id}>{c.name} – {c.phone}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Ngày lập</label>
+              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={inpStyle()} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Trạng thái</label>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={inpStyle()}>
+                {["Chờ duyệt","Đã duyệt","Huỷ"].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>VAT</label>
+              <select value={form.vatType||"no_vat"} onChange={e => setForm({ ...form, vatType: e.target.value })} style={inpStyle()}>
+                <option value="no_vat">Chưa bao gồm VAT</option>
+                <option value="vat8">+ VAT 8%</option>
+                <option value="vat10">+ VAT 10%</option>
+                <option value="included">Đã bao gồm VAT</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Vehicle info card - fully editable */}
+          {selVehicle && (
+            <div style={{ padding: "10px 12px", background: "#f5f7ff", borderRadius: 8, border: "1px solid #c5cae9", marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "6px 14px", fontSize: 12 }}>
+                {[
+                  ["Biển số", <strong style={{ color: "#1a237e", fontSize: 14 }}>{selVehicle.licensePlate}</strong>],
+                  ["Tên xe", selVehicle.vehicleName],
+                  ["Nhãn hiệu", selVehicle.brand],
+                  ["Loại xe", selVehicle.type],
+                  ["Màu sắc", selVehicle.color],
+                  ["Năm SX", selVehicle.year],
+                  ["Số khung", <span style={{ fontFamily: "monospace" }}>{selVehicle.frameNumber}</span>],
+                  ["Số máy", <span style={{ fontFamily: "monospace" }}>{selVehicle.engineNumber}</span>],
+                  ["Km hiện tại", Number(selVehicle.currentKm||0).toLocaleString() + " km"],
+                  ["Hạn đăng kiểm", formatDate(selVehicle.registrationExpiry)],
+                  ["Hạn bảo hiểm", formatDate(selVehicle.insuranceExpiry)],
+                  ["SĐT khách", selCustomer?.phone || "-"],
+                ].map(([lbl, val]) => (
+                  <div key={lbl}><span style={{ color: "#888", fontWeight: 600 }}>{lbl}: </span>{val || "-"}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Km tiếp nhận</label>
+              <input type="number" value={form.receiveKm} onChange={e => setForm({ ...form, receiveKm: e.target.value })} style={inpStyle()} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Khách hàng yêu cầu / Nội dung kiểm tra</label>
+              <input value={form.customerRequest||""} onChange={e => setForm({ ...form, customerRequest: e.target.value })} style={inpStyle()} placeholder="Nhập nội dung khách yêu cầu..." />
+            </div>
+          </div>
+
+          {/* ITEMS TABLE */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "12px 0 6px" }}>
+            <div style={{ fontWeight: 700, color: "#1a237e", padding: "4px 10px", background: "#e8eaf6", borderLeft: "4px solid #1a237e", borderRadius: 4 }}>📋 Hạng mục báo giá</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <Btn size="sm" onClick={addPartItem} color="#1565c0" outline>📦 Thêm vật tư</Btn>
+              <Btn size="sm" onClick={addLaborItem} color="#2e7d32" outline>⏱️ Thêm giờ công</Btn>
+            </div>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#e8eaf6" }}>
+                  <th style={{ padding: "7px 8px", textAlign: "left", color: "#1a237e", minWidth: 180 }}>Tên hạng mục</th>
+                  <th style={{ padding: "7px 8px", textAlign: "center", color: "#1a237e", width: 50 }}>Loại</th>
+                  <th style={{ padding: "7px 8px", textAlign: "right", color: "#e65100", background: "#fff8e1", width: 105 }}>Giá nhập (đ)</th>
+                  <th style={{ padding: "7px 8px", textAlign: "right", color: "#2e7d32", background: "#e8f5e9", width: 115 }}>Giá bán / h (đ)</th>
+                  <th style={{ padding: "7px 8px", textAlign: "center", color: "#1a237e", width: 72 }}>SL / Giờ</th>
+                  <th style={{ padding: "7px 8px", textAlign: "center", color: "#1a237e", width: 48 }}>ĐV</th>
+                  <th style={{ padding: "7px 8px", textAlign: "right", color: "#2e7d32", width: 105 }}>Thành tiền</th>
+                  <th style={{ padding: "7px 8px", textAlign: "right", color: "#1565c0", width: 100 }}>Lãi dòng</th>
+                  <th style={{ width: 28 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {form.items.length === 0
+                  ? <tr><td colSpan={9} style={{ padding: 20, textAlign: "center", color: "#aaa" }}>Chưa có hạng mục — nhấn nút phía trên để thêm</td></tr>
+                  : form.items.map((it, i) => {
+                    const { rev, cost } = calcItem(it);
+                    const lineProfit = rev - cost;
+                    const isPart = it.type !== "labor";
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: isPart ? "#fff" : "#fdf3f6" }}>
+
+                        {/* Tên - luôn chỉnh sửa được */}
+                        <td style={{ padding: "4px 5px" }}>
+                          {isPart && (
+                            <select value={it.partId || ""} onChange={e => updateItem(i, "partId", e.target.value)}
+                              style={{ width: "100%", padding: "3px 5px", border: "1px solid #90caf9", borderRadius: 4, fontSize: 11, marginBottom: 3, background: "#f5f5f5" }}>
+                              <option value="">— Chọn từ kho (tuỳ chọn) —</option>
+                              {data.parts.map(p => <option key={p.id} value={p.id}>{p.name} (tồn: {p.stock})</option>)}
+                            </select>
+                          )}
+                          <input value={it.name} onChange={e => updateItem(i, "name", e.target.value)}
+                            style={{ width: "100%", padding: "5px 7px", border: "1px solid #ddd", borderRadius: 4, fontSize: 12 }}
+                            placeholder={isPart ? "Tên vật tư / dịch vụ" : "Tên công việc"} />
+                        </td>
+
+                        {/* Loại */}
+                        <td style={{ padding: "4px 5px", textAlign: "center" }}>
+                          <select value={it.type} onChange={e => updateItem(i, "type", e.target.value)}
+                            style={{ fontSize: 10, padding: "3px 2px", border: "1px solid #ddd", borderRadius: 4, background: isPart ? "#e3f2fd" : "#e8f5e9", color: isPart ? "#1565c0" : "#2e7d32", fontWeight: 700 }}>
+                            <option value="part">📦 VT</option>
+                            <option value="labor">⏱️ GC</option>
+                          </select>
+                        </td>
+
+                        {/* Giá nhập */}
+                        <td style={{ padding: "4px 5px", background: "#fffde7" }}>
+                          {isPart
+                            ? numInp(it.costPrice, v => updateItem(i, "costPrice", v), "100%", "#ffc107", "#fffde7")
+                            : <div style={{ textAlign: "center", color: "#ccc", fontSize: 11 }}>—</div>}
+                        </td>
+
+                        {/* Giá bán / đơn giá */}
+                        <td style={{ padding: "4px 5px", background: "#f1f8e9" }}>
+                          {isPart
+                            ? numInp(it.salePrice, v => updateItem(i, "salePrice", v), "100%", "#a5d6a7", "#f1f8e9")
+                            : numInp(it.laborRate, v => updateItem(i, "laborRate", v), "100%", "#90caf9", "#e3f2fd")}
+                        </td>
+
+                        {/* SL / Giờ */}
+                        <td style={{ padding: "4px 5px" }}>
+                          {numInp(isPart ? it.qty : it.hours, v => updateItem(i, isPart ? "qty" : "hours", v), "100%")}
+                        </td>
+
+                        {/* ĐV */}
+                        <td style={{ padding: "4px 5px" }}>
+                          <input value={it.unit} onChange={e => updateItem(i, "unit", e.target.value)}
+                            style={{ width: "100%", padding: "5px 3px", border: "1px solid #ddd", borderRadius: 4, fontSize: 11, textAlign: "center" }} />
+                        </td>
+
+                        {/* Thành tiền - tự động */}
+                        <td style={{ padding: "4px 8px", textAlign: "right", fontWeight: 700, color: "#2e7d32", fontSize: 13 }}>
+                          {formatCurrency(rev)}
+                        </td>
+
+                        {/* Lãi dòng - tự động */}
+                        <td style={{ padding: "4px 8px", textAlign: "right", fontWeight: 700, color: lineProfit >= 0 ? "#1565c0" : "#c62828" }}>
+                          {formatCurrency(lineProfit)}
+                        </td>
+
+                        {/* Xóa */}
+                        <td style={{ padding: "4px 5px", textAlign: "center" }}>
+                          <button onClick={() => removeItem(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c62828", fontSize: 16, lineHeight: 1 }}>✕</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: "#f5f5f5" }}>
+                  <td colSpan={6} style={{ padding: "6px 8px", fontWeight: 700, color: "#333" }}>Tổng trước chiết khấu</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 800, color: "#2e7d32" }}>{formatCurrency(totalRev)}</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 800, color: "#1565c0" }}>{formatCurrency(totalRev - totalCost)}</td>
+                  <td></td>
+                </tr>
+                <tr style={{ background: "#fff8e1" }}>
+                  <td colSpan={7} style={{ padding: "6px 8px", color: "#e65100" }}>Tổng giá vốn vật tư</td>
+                  <td style={{ padding: "6px 8px", textAlign: "right", color: "#e65100", fontWeight: 700 }}>{formatCurrency(totalCost)}</td>
+                  <td></td>
+                </tr>
+                <tr style={{ background: "#fff8e1" }}>
+                  <td colSpan={5} style={{ padding: "6px 8px", color: "#e65100", fontWeight: 600 }}>Chiết khấu</td>
+                  <td colSpan={2} style={{ padding: "6px 8px" }}>
+                    <input type="number" value={form.discount} onChange={e => setForm({ ...form, discount: e.target.value })}
+                      style={{ width: 130, padding: "5px 8px", border: "1px solid #ffc107", borderRadius: 4, fontSize: 13, textAlign: "right", background: "#fffde7" }} />
+                  </td>
+                  <td style={{ padding: "6px 8px", textAlign: "right", color: "#e65100", fontWeight: 700 }}>- {formatCurrency(disc)}</td>
+                  <td></td>
+                </tr>
+                {(() => {
+                  const vatRate = form.vatType === "vat8" ? 0.08 : form.vatType === "vat10" ? 0.10 : 0;
+                  const vatAmt  = Math.round(total * vatRate);
+                  const totalWithVat = total + vatAmt;
+                  return (<>
+                    {form.vatType !== "no_vat" && form.vatType !== "included" && vatRate > 0 && (
+                      <tr style={{ background: "#fff8e1" }}>
+                        <td colSpan={7} style={{ padding: "6px 8px", color: "#e65100" }}>VAT {form.vatType === "vat8" ? "8%" : "10%"}</td>
+                        <td style={{ padding: "6px 8px", textAlign: "right", color: "#e65100", fontWeight: 700 }}>{formatCurrency(vatAmt)}</td>
+                        <td></td>
+                      </tr>
+                    )}
+                    <tr style={{ background: "#e8f5e9" }}>
+                      <td colSpan={7} style={{ padding: "8px 10px", fontWeight: 800, fontSize: 14, color: "#2e7d32" }}>
+                        TỔNG BÁO GIÁ KHÁCH TRẢ
+                        {form.vatType === "included" && <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8 }}>(Đã bao gồm VAT)</span>}
+                        {form.vatType !== "no_vat" && form.vatType !== "included" && vatRate > 0 && <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8 }}>(Đã bao gồm VAT {form.vatType === "vat8" ? "8%" : "10%"})</span>}
+                      </td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 900, fontSize: 17, color: "#2e7d32" }}>{formatCurrency(totalWithVat)}</td>
+                      <td></td>
+                    </tr>
+                    <tr style={{ background: "#e3f2fd" }}>
+                      <td colSpan={7} style={{ padding: "6px 8px", fontWeight: 700, color: "#1565c0" }}>💰 Lãi ước tính (Doanh thu – Giá vốn VT)</td>
+                      <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 800, fontSize: 14, color: grossProfit >= 0 ? "#1565c0" : "#c62828" }}>{formatCurrency(grossProfit)}</td>
+                      <td></td>
+                    </tr>
+                  </>);
+                })()}
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Ghi chú */}
+          <div style={{ marginTop: 10 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "#555", display: "block", marginBottom: 3 }}>Ghi chú</label>
+            <textarea value={form.notes||""} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+              style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+            <Btn outline color="#1565c0" onClick={() => {
+              const t = (form.items||[]).reduce((s,it) => s + (it.type==="labor" ? Number(it.hours)*Number(it.laborRate) : Number(it.qty)*Number(it.salePrice)), 0) - (Number(form.discount)||0);
+              printQuote({...form, total: t}, data);
+            }}>🖨️ In báo giá</Btn>
+            <Btn outline color="#666" onClick={() => setModal(false)}>Huỷ</Btn>
+            <Btn onClick={save}>💾 Lưu báo giá</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 // ===================== PARTS PAGE =====================
 function PartsPage({ data, update, showToast }) {
   const [tab, setTab] = useState("inventory");
@@ -2377,6 +2756,7 @@ function AlertsPage({ data, alerts, setPage }) {
     </div>
   );
 }
+
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<SicoAuto />);
