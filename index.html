@@ -143,28 +143,17 @@ const useStorage = () => {
 
 // ===================== PRINT =====================
 const doPrint = (content, title) => {
-  const old = document.getElementById("__sico_print__");
-  if (old) old.remove();
-  const oldStyle = document.getElementById("__sico_ps__");
-  if (oldStyle) oldStyle.remove();
-
-  const d = document.createElement("div");
-  d.id = "__sico_print__";
-  d.innerHTML = content;
-  document.body.appendChild(d);
-
-  const s = document.createElement("style");
-  s.id = "__sico_ps__";
-  s.textContent = "@media screen{#__sico_print__{display:none!important}}@media print{body>*{visibility:hidden!important}#__sico_print__{visibility:visible!important;display:block!important;position:absolute;top:0;left:0;width:100%}#__sico_print__ *{visibility:visible!important}}";
-  document.head.appendChild(s);
-
-  setTimeout(function(){
-    window.print();
-    setTimeout(function(){
-      const el=document.getElementById("__sico_print__"); if(el)el.remove();
-      const sl=document.getElementById("__sico_ps__"); if(sl)sl.remove();
-    }, 2000);
-  }, 400);
+  const full = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>" + (title||"SICO AUTO") + "</title>"
+    + "<script>setTimeout(function(){window.print();},800);<\/script>"
+    + "</head><body style='margin:0;padding:0'>" + content + "</body></html>";
+  const w = window.open("", "_blank");
+  if (w) {
+    w.document.open();
+    w.document.write(full);
+    w.document.close();
+  } else {
+    alert("Trình duyệt đang chặn popup! Vui lòng cho phép popup cho trang này:\n\nNhìn góc trên phải trình duyệt → nhấn vào icon bị chặn → chọn Luôn cho phép");
+  }
 };
 
 const fC = (n) => (Number(n)||0).toLocaleString("vi-VN") + " đ";
