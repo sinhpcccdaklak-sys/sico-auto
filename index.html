@@ -26,6 +26,7 @@ const EMPTY_CUSTOMER = { id: null, name: "", phone: "", address: "", email: "" }
 const EMPTY_VEHICLE = {
   id: null, customerId: null, licensePlate: "", frameNumber: "", engineNumber: "",
   vehicleName: "", brand: "", type: "", color: "", year: "", currentKm: "",
+  photos: [],
   lastMaintenanceDate: "", nextMaintenanceKm: "", registrationExpiry: "", insuranceExpiry: "",
   notes: ""
 };
@@ -881,7 +882,57 @@ function VehiclesPage({ data, update, showToast }) {
               style={{ width: "100%", padding: "7px 10px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, marginTop: 4, resize: "vertical", boxSizing: "border-box" }} />
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-            <Btn outline color="#1565c0" onClick={() => printVehicleReceipt(form, data)}>🖨️ In phiếu tiếp nhận</Btn>
+            {/* Ảnh xe */}
+            <div style={{ gridColumn: "1/-1", marginTop: 6 }}>
+              <div style={{ fontWeight: 700, color: "#1a237e", padding: "5px 10px", background: "#e8eaf6", borderLeft: "4px solid #1a237e", borderRadius: 4, marginBottom: 10 }}>
+                📷 Hình ảnh xe (căn cứ pháp lý tình trạng xe)
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#e3f2fd", border: "1px solid #90caf9", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#1565c0" }}>
+                  📁 Chọn ảnh từ máy
+                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => {
+                    Array.from(e.target.files).forEach(file => {
+                      const reader = new FileReader();
+                      reader.onload = ev => setForm(f => ({ ...f, photos: [...(f.photos||[]), { id: Date.now()+Math.random(), data: ev.target.result, name: file.name, date: new Date().toLocaleDateString("vi-VN"), note: "" }]}));
+                      reader.readAsDataURL(file);
+                    });
+                    e.target.value = "";
+                  }} />
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "#e8f5e9", border: "1px solid #a5d6a7", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#2e7d32" }}>
+                  📸 Chụp ảnh trực tiếp
+                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => {
+                    const file = e.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => setForm(f => ({ ...f, photos: [...(f.photos||[]), { id: Date.now()+Math.random(), data: ev.target.result, name: "Ảnh chụp "+new Date().toLocaleDateString("vi-VN"), date: new Date().toLocaleDateString("vi-VN"), note: "" }]}));
+                    reader.readAsDataURL(file);
+                    e.target.value = "";
+                  }} />
+                </label>
+              </div>
+              {(form.photos||[]).length === 0 ? (
+                <div style={{ padding: 16, textAlign: "center", color: "#aaa", border: "2px dashed #e0e0e0", borderRadius: 8, fontSize: 13 }}>
+                  Chưa có ảnh — nhấn nút trên để thêm ảnh xe
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+                  {(form.photos||[]).map((photo, idx) => (
+                    <div key={photo.id} style={{ border: "1px solid #e0e0e0", borderRadius: 8, overflow: "hidden", position: "relative" }}>
+                      <img src={photo.data} alt={photo.name} style={{ width: "100%", height: 110, objectFit: "cover", display: "block" }} />
+                      <div style={{ padding: "5px 7px", background: "#fafafa" }}>
+                        <div style={{ fontSize: 10, color: "#aaa", marginBottom: 3 }}>{photo.date}</div>
+                        <input value={photo.note||""} onChange={e => { const p=[...(form.photos||[])]; p[idx]={...p[idx],note:e.target.value}; setForm(f=>({...f,photos:p})); }}
+                          placeholder="Ghi chú..." style={{ width:"100%", padding:"2px 5px", border:"1px solid #ddd", borderRadius:3, fontSize:11, boxSizing:"border-box" }} />
+                      </div>
+                      <button onClick={() => setForm(f=>({...f,photos:(f.photos||[]).filter((_,i)=>i!==idx)}))}
+                        style={{ position:"absolute", top:3, right:3, background:"rgba(198,40,40,0.85)", border:"none", borderRadius:"50%", width:20, height:20, color:"#fff", cursor:"pointer", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(form.photos||[]).length > 0 && <div style={{ fontSize:11, color:"#aaa", marginTop:6 }}>{(form.photos||[]).length} ảnh đã thêm</div>}
+            </div>
+                        <Btn outline color="#1565c0" onClick={() => printVehicleReceipt(form, data)}>🖨️ In phiếu tiếp nhận</Btn>
             <Btn outline color="#666" onClick={() => setModal(null)}>Huỷ</Btn>
             <Btn onClick={save}>💾 Lưu thông tin xe</Btn>
           </div>
