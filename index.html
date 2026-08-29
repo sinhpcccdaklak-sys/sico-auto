@@ -155,7 +155,7 @@ const doPrint = (content, title) => {
 
   const s = document.createElement("style");
   s.id = "__sico_ps__";
-  s.textContent = "@media screen{#__sico_print__{display:none}}@media print{body *{display:none!important}#__sico_print__{display:block!important;position:fixed;top:0;left:0;width:100%;z-index:99999}}";
+  s.textContent = "@media screen{#__sico_print__{display:none!important}}@media print{body>*{visibility:hidden!important}#__sico_print__{visibility:visible!important;display:block!important;position:absolute;top:0;left:0;width:100%}#__sico_print__ *{visibility:visible!important}}";
   document.head.appendChild(s);
 
   setTimeout(function(){
